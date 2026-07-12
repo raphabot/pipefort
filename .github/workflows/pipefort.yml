@@ -1,0 +1,60 @@
+name: pipefort
+
+# Dogfood: scan Pipefort's own workflows with the Pipefort Action. Report-only
+# (fail-on: NONE) so it never blocks CI. Findings land in the job summary and a
+# SARIF artifact; the code-scanning upload only runs on a public repo, since
+# private repos need GitHub Advanced Security for it.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read # upload-sarif reads the workflow run
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Pipefort
+        id: pipefort
+        uses: ./
+        with:
+          path: .
+          ruleset: all
+          fail-on: NONE
+          output: sarif
+
+      - name: Findings summary
+        if: always()
+        run: |
+          {
+            echo "## Pipefort findings"
+            count=$(jq '[.runs[].results[]] | length' pipefort.sarif)
+            if [ "$count" -eq 0 ]; then
+              echo "No findings."
+            else
+              echo "| Rule | Level | Location | Message |"
+              echo "| --- | --- | --- | --- |"
+              jq -r '.runs[].results[] | "| \(.ruleId) | \(.level) | \(.locations[0].physicalLocation.artifactLocation.uri):\(.locations[0].physicalLocation.region.startLine // "?") | \(.message.text | gsub("\\|"; "\\\\|") | gsub("\n"; " ")) |"' pipefort.sarif
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload SARIF artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipefort-sarif
+          path: ${{ steps.pipefort.outputs.sarif-file }}
+
+      - name: Upload SARIF to code scanning
+        if: always() && !github.event.repository.private
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.pipefort.outputs.sarif-file }}

@@ -1,0 +1,18 @@
+# Image for the Pipefort GitHub Action — builds the `pipefort` CLI (the root
+# package main), distinct from the web API server image in ./Dockerfile.
+FROM golang:1.25 AS builder
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/pipefort .
+
+# git is needed so `--git` clones work; ca-certificates for HTTPS to GitHub.
+FROM alpine:3.20
+RUN apk add --no-cache git ca-certificates
+COPY --from=builder /out/pipefort /usr/local/bin/pipefort
+COPY action/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]

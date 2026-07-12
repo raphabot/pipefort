@@ -1,0 +1,19 @@
+# Compiled binaries
+pipefort
+
+# Temp clone repositories
+repo-scan-*
+
+# OS files
+.DS_Store
+
+# Secrets / env
+.env
+.env.local
+
+# Claude Code local (user-specific) settings
+.claude/settings.local.json
+
+# Local dev module graph (sibling private repo)
+go.work
+go.work.sum

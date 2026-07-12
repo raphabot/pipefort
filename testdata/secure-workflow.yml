@@ -1,0 +1,38 @@
+name: Secure Test Workflow
+
+on:
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11 # v4.1.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@60edb5dd545a775178f525247263d18256e63756 # v4.0.2
+        with:
+          node-version: '20'
+
+      - name: Install dependencies and run tests
+        run: |
+          npm ci
+          npm test
+
+      - name: Print PR Title (Injection Safe)
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          echo "Processing PR: $PR_TITLE"
+
+      - name: Send Slack notification
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"Build finished"}' $SLACK_WEBHOOK_URL

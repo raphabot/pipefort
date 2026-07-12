@@ -1,0 +1,55 @@
+version: 2
+
+project_name: pipefort
+
+builds:
+  - id: pipefort
+    main: ./
+    binary: pipefort
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+archives:
+  - id: pipefort
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+# Homebrew tap. GoReleaser commits the generated Formula/pipefort.rb into the
+# separate raphabot/homebrew-tap repo, giving users `brew install
+# raphabot/tap/pipefort`.
+#
+# PREREQUISITES (must exist before the next release, or the release job fails):
+#   1. A repo github.com/raphabot/homebrew-tap (may be empty).
+#   2. A HOMEBREW_TAP_TOKEN secret on THIS repo — a PAT with contents:write on
+#      the tap repo (the default GITHUB_TOKEN can't push to another repo).
+brews:
+  - name: pipefort
+    repository:
+      owner: raphabot
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: "https://pipefort.com"
+    description: "Scan CI/CD workflows for the OWASP Top 10 CI/CD security risks"
+    test: |
+      system "#{bin}/pipefort", "--help"
+
+release:
+  draft: false

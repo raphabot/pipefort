@@ -1,0 +1,41 @@
+name: Vulnerable Test Workflow
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies and run tests
+        run: |
+          npm ci
+          npm test
+
+      - name: Print PR Title (Injection Risk)
+        run: |
+          echo "Processing PR: ${{ github.event.pull_request.title }}"
+
+      - name: Send Slack notification
+        env:
+          SLACK_WEBHOOK_URL: "https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX"
+          GITHUB_TOKEN: "ghp_1234567890abcdef1234567890abcdef1234"
+        run: |
+          curl -X POST -H 'Content-type: application/json' --data '{"text":"Build finished"}' $SLACK_WEBHOOK_URL
+
+  deploy-self-hosted:
+    runs-on: [self-hosted, linux]
+    steps:
+      - name: Run script from web
+        run: |
+          curl -sSL https://example.com/install.sh | bash

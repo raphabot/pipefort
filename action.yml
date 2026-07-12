@@ -1,0 +1,47 @@
+name: "Pipefort"
+description: "Scan GitHub Actions / GitLab CI workflows for OWASP Top 10 CI/CD risks and SLSA gaps."
+author: "Pipefort"
+branding:
+  icon: "shield"
+  color: "purple"
+
+inputs:
+  path:
+    description: "Path to scan for workflow files."
+    required: false
+    default: "."
+  ruleset:
+    description: "Which rules to run: 'all', 'owasp', 'slsa', or a specific SLSA level (e.g. 'slsa-build-l3')."
+    required: false
+    default: "all"
+  fail-on:
+    description: "Fail (exit 1) on findings at or above this severity: HIGH, MEDIUM, LOW, INFO, or NONE."
+    required: false
+    default: "MEDIUM"
+  output:
+    description: "Output format: 'sarif', 'json', or 'console'. Defaults to 'sarif' for upload to GitHub code scanning."
+    required: false
+    default: "sarif"
+  sarif-file:
+    description: "Where to write the SARIF report when output is 'sarif'."
+    required: false
+    default: "pipefort.sarif"
+  github-token:
+    description: "GitHub token used for the online supply-chain pin audits (known-vulnerable, impostor-commit, ref/version-mismatch, typosquat). Defaults to the workflow token; set to '' to keep the scan fully offline."
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  sarif-file:
+    description: "Path to the generated SARIF file (when output is 'sarif')."
+
+runs:
+  using: "docker"
+  image: "Dockerfile.action"
+  env:
+    INPUT_PATH: ${{ inputs.path }}
+    INPUT_RULESET: ${{ inputs.ruleset }}
+    INPUT_FAIL_ON: ${{ inputs.fail-on }}
+    INPUT_OUTPUT: ${{ inputs.output }}
+    INPUT_SARIF_FILE: ${{ inputs.sarif-file }}
+    INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}

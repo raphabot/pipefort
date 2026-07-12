@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build / vet / test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            echo "Run 'gofmt -w .' and commit the result."
+            exit 1
+          fi
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      - name: No-pgx dependency guard
+        # The CLI must never pull in the Postgres driver (a SaaS-only concern).
+        # go list -deps enumerates the transitive dependencies of the root
+        # package; any jackc/pgx match fails the build.
+        run: |
+          if go list -deps . | grep jackc/pgx; then
+            echo "ERROR: the CLI transitively depends on jackc/pgx — this must never happen."
+            exit 1
+          fi
+          echo "OK: no jackc/pgx in the CLI dependency graph."
