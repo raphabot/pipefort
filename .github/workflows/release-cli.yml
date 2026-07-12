@@ -1,13 +1,15 @@
 name: release-cli
 
 on:
-  # NOTE: the push trigger is intentionally disabled for the initial import so the
-  # first release is cut deliberately as v0.1.0 via workflow_dispatch (bump: minor),
-  # NOT an automatic patch that would produce v0.0.1 and re-issue an old tag hash.
-  # Restore this block in a follow-up commit AFTER v0.1.0 is published:
-  # push:
-  #   branches: [main]
-  #   paths: ['main.go', 'pkg/**', 'go.mod', 'go.sum', '.goreleaser.yaml', '.github/workflows/release-cli.yml']
+  push:
+    branches: [main]
+    paths:
+      - 'main.go'
+      - 'pkg/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.goreleaser.yaml'
+      - '.github/workflows/release-cli.yml'
   workflow_dispatch:
     inputs:
       bump:
