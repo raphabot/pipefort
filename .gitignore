@@ -17,3 +17,6 @@ repo-scan-*
 # Local dev module graph (sibling private repo)
 go.work
 go.work.sum
+
+# GoReleaser build output
+dist/

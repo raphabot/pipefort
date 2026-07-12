@@ -32,24 +32,33 @@ archives:
 checksum:
   name_template: checksums.txt
 
-# Homebrew tap. GoReleaser commits the generated Formula/pipefort.rb into the
+# Homebrew tap. GoReleaser commits the generated Casks/pipefort.rb into the
 # separate raphabot/homebrew-tap repo, giving users `brew install
-# raphabot/tap/pipefort`.
+# raphabot/tap/pipefort`. (GoReleaser v2 deprecated `brews:` in favor of
+# `homebrew_casks:` — https://goreleaser.com/deprecations#brews.)
 #
 # PREREQUISITES (must exist before the next release, or the release job fails):
 #   1. A repo github.com/raphabot/homebrew-tap (may be empty).
 #   2. A HOMEBREW_TAP_TOKEN secret on THIS repo — a PAT with contents:write on
 #      the tap repo (the default GITHUB_TOKEN can't push to another repo).
-brews:
+homebrew_casks:
   - name: pipefort
+    binaries:
+      - pipefort
     repository:
       owner: raphabot
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     homepage: "https://pipefort.com"
     description: "Scan CI/CD workflows for the OWASP Top 10 CI/CD security risks"
-    test: |
-      system "#{bin}/pipefort", "--help"
+    # Unsigned CLI binary: strip the quarantine xattr so macOS Gatekeeper doesn't
+    # block it on first run.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/pipefort"]
+          end
 
 release:
   draft: false
