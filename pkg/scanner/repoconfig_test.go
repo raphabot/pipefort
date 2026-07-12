@@ -101,9 +101,9 @@ func TestMatchFileGlob(t *testing.T) {
 
 func TestDisabledRuleIDs(t *testing.T) {
 	cfg := &RepoConfig{Rules: map[string]RuleOverride{
-		string(RuleMissingTimeout):  {Enabled: boolPtr(false)},
-		string(RuleUnpinnedAction):  {Enabled: boolPtr(true)}, // explicitly enabled → not in set
-		string(RuleHardcodedSecrets): {Severity: "low"},       // no enable flag → not in set
+		string(RuleMissingTimeout):   {Enabled: boolPtr(false)},
+		string(RuleUnpinnedAction):   {Enabled: boolPtr(true)}, // explicitly enabled → not in set
+		string(RuleHardcodedSecrets): {Severity: "low"},        // no enable flag → not in set
 	}}
 	got := cfg.DisabledRuleIDs()
 	if len(got) != 1 || !got[RuleMissingTimeout] {

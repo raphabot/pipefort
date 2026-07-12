@@ -270,8 +270,8 @@ func TestSecretPushProtectionOff(t *testing.T) {
 
 func TestSettingsFindingsFlowIntoOwaspRuleset(t *testing.T) {
 	ctx := secureContext()
-	ctx.BranchProtection = nil       // BP-MISSING (CICD-SEC-1)
-	ctx.DependabotAlerts = false     // DEPENDABOT-ALERTS-OFF (CICD-SEC-3)
+	ctx.BranchProtection = nil   // BP-MISSING (CICD-SEC-1)
+	ctx.DependabotAlerts = false // DEPENDABOT-ALERTS-OFF (CICD-SEC-3)
 	all := ScanRepositorySettings(ctx)
 	owasp := FilterFindings(all, "owasp")
 	if len(owasp) != len(all) {

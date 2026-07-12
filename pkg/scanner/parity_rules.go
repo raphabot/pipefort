@@ -369,14 +369,14 @@ func CheckMissingConcurrency(file string, workflow *WorkflowNode, jobs []JobNode
 		line, col = 1, 1
 	}
 	return []Finding{{
-		File:     file,
-		Line:     line,
-		Column:   col,
-		Severity: SeverityLow,
-		Category: "BEST-PRAC-4",
-		RuleID:   RuleMissingConcurrency,
-		Title:    "Deploy/release workflow has no concurrency guard",
-		Description: "This workflow publishes or deploys but declares no concurrency: group. Two runs that overlap (e.g. rapid pushes) can race on shared caches, artifacts, and the deploy target, producing double-deploys or inconsistent state.",
+		File:           file,
+		Line:           line,
+		Column:         col,
+		Severity:       SeverityLow,
+		Category:       "BEST-PRAC-4",
+		RuleID:         RuleMissingConcurrency,
+		Title:          "Deploy/release workflow has no concurrency guard",
+		Description:    "This workflow publishes or deploys but declares no concurrency: group. Two runs that overlap (e.g. rapid pushes) can race on shared caches, artifacts, and the deploy target, producing double-deploys or inconsistent state.",
 		Recommendation: "Add a top-level `concurrency:` block, e.g. `concurrency: { group: ${{ github.workflow }}-${{ github.ref }}, cancel-in-progress: true }`.",
 	}}
 }
@@ -437,4 +437,3 @@ func obfCol(node yaml.Node) int {
 	}
 	return 0
 }
-

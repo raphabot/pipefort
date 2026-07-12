@@ -56,7 +56,7 @@ func TestIsGitLabCIPath(t *testing.T) {
 		".gitlab-ci/sub/deploy.yml": true,
 		".gitlab-ci/notes.md":       false,
 		".github/workflows/ci.yml":  false,
-		"random/.gitlab-ci/ci.yml":  true,  // nested template dir
+		"random/.gitlab-ci/ci.yml":  true, // nested template dir
 		"src/code.go":               false,
 	}
 	for p, want := range cases {

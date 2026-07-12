@@ -75,20 +75,20 @@ func scanGitLabBytes(filePath string, content []byte) ([]Finding, error) {
 // inspect are pulled into typed fields; the raw mapping is kept for line/col
 // access during finding emission.
 type glJob struct {
-	ID       string
-	Key      *yaml.Node // mapping-entry key (the job name)
-	Mapping  *yaml.Node // value (the job mapping node)
-	Script   []scriptLine
-	Before   []scriptLine
-	After    []scriptLine
-	Rules    *yaml.Node
-	Only     *yaml.Node
-	Tags     *yaml.Node
-	Image    *yaml.Node
-	Vars     *yaml.Node
-	Timeout  *yaml.Node
+	ID        string
+	Key       *yaml.Node // mapping-entry key (the job name)
+	Mapping   *yaml.Node // value (the job mapping node)
+	Script    []scriptLine
+	Before    []scriptLine
+	After     []scriptLine
+	Rules     *yaml.Node
+	Only      *yaml.Node
+	Tags      *yaml.Node
+	Image     *yaml.Node
+	Vars      *yaml.Node
+	Timeout   *yaml.Node
 	AllowFail *yaml.Node
-	Trigger  *yaml.Node
+	Trigger   *yaml.Node
 }
 
 // scriptLine is a single string in a script:/before_script:/after_script:

@@ -32,11 +32,11 @@ type Finding struct {
 	Line           int      `json:"line"`
 	Column         int      `json:"column"`
 	Severity       Severity `json:"severity"`
-	Category       string   `json:"category"`        // OWASP Category (e.g. CICD-SEC-04)
-	RuleID         RuleID   `json:"rule_id"`         // Per-check identifier (matches RuleSpec.ID). Empty for SYSTEM findings.
-	Title          string   `json:"title"`           // Short description
-	Description    string   `json:"description"`     // Detailed description of the risk
-	Recommendation string   `json:"recommendation"`  // Actionable steps to fix
+	Category       string   `json:"category"`       // OWASP Category (e.g. CICD-SEC-04)
+	RuleID         RuleID   `json:"rule_id"`        // Per-check identifier (matches RuleSpec.ID). Empty for SYSTEM findings.
+	Title          string   `json:"title"`          // Short description
+	Description    string   `json:"description"`    // Detailed description of the risk
+	Recommendation string   `json:"recommendation"` // Actionable steps to fix
 	// Confidence is how certain the check is that this finding is real.
 	// Backfilled from the rule's DefaultConfidence by StampConfidence; SYSTEM
 	// findings (empty RuleID) default to HIGH.

@@ -531,7 +531,7 @@ func checkEnvSecrets(file string, envNode *yaml.Node, scope string) []Finding {
 		if isSecretKey && val != "" {
 			trimmedVal := strings.TrimSpace(val)
 			isGitHubSecretExpr := strings.HasPrefix(trimmedVal, "${{") && strings.HasSuffix(trimmedVal, "}}")
-			
+
 			if !isGitHubSecretExpr {
 				findings = append(findings, Finding{
 					File:     file,

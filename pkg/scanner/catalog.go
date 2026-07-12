@@ -73,13 +73,13 @@ const (
 	// Offline rule-parity batch (condition_rules.go / obfuscation_rules.go /
 	// cache_rules.go / publishing_rules.go / concurrency_rules.go /
 	// owasp_extended_rules.go).
-	RuleUnsoundCondition    RuleID = "cicd-sec-1-unsound-condition"
-	RuleUnsoundContains     RuleID = "cicd-sec-1-unsound-contains"
-	RuleObfuscatedExpr      RuleID = "cicd-sec-4-obfuscated-expression"
-	RuleCachePoisonRelease  RuleID = "cicd-sec-4-cache-poisoning-release"
-	RuleOverprovSecrets     RuleID = "cicd-sec-6-overprovisioned-secrets"
-	RuleUseTrustedPublish   RuleID = "cicd-sec-2-use-trusted-publishing"
-	RuleMissingConcurrency  RuleID = "best-prac-4-missing-concurrency"
+	RuleUnsoundCondition   RuleID = "cicd-sec-1-unsound-condition"
+	RuleUnsoundContains    RuleID = "cicd-sec-1-unsound-contains"
+	RuleObfuscatedExpr     RuleID = "cicd-sec-4-obfuscated-expression"
+	RuleCachePoisonRelease RuleID = "cicd-sec-4-cache-poisoning-release"
+	RuleOverprovSecrets    RuleID = "cicd-sec-6-overprovisioned-secrets"
+	RuleUseTrustedPublish  RuleID = "cicd-sec-2-use-trusted-publishing"
+	RuleMissingConcurrency RuleID = "best-prac-4-missing-concurrency"
 
 	// Config-driven action allow/deny policy (forbidden_uses.go). Silent unless
 	// a .pipefort.yml forbidden-uses block is present.
@@ -111,11 +111,11 @@ const (
 	RuleGitLabMissingResGroup   RuleID = "best-prac-4-gl-missing-resource-group"
 
 	// GitLab project-settings checks (settings_gitlab.go, Surface repo-settings).
-	RuleGitLabBPMissing        RuleID = "cicd-sec-1-gl-bp-missing"
-	RuleGitLabBPForcePush      RuleID = "cicd-sec-1-gl-bp-force-push"
-	RuleGitLabMergeNoPipeline  RuleID = "cicd-sec-1-gl-merge-without-pipeline"
-	RuleGitLabNoApprovals      RuleID = "cicd-sec-1-gl-no-approvals"
-	RuleGitLabPublicPipelines  RuleID = "cicd-sec-4-gl-public-pipelines"
+	RuleGitLabBPMissing       RuleID = "cicd-sec-1-gl-bp-missing"
+	RuleGitLabBPForcePush     RuleID = "cicd-sec-1-gl-bp-force-push"
+	RuleGitLabMergeNoPipeline RuleID = "cicd-sec-1-gl-merge-without-pipeline"
+	RuleGitLabNoApprovals     RuleID = "cicd-sec-1-gl-no-approvals"
+	RuleGitLabPublicPipelines RuleID = "cicd-sec-4-gl-public-pipelines"
 )
 
 // Repository-settings checks (ScanRepositorySettings) ------------------------

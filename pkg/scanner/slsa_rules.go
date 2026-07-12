@@ -187,14 +187,14 @@ func CheckSLSAProvenance(file string, workflow *WorkflowNode, jobs []JobNodeWith
 		return nil
 	}
 	return []Finding{{
-		File:     file,
-		Line:     publishLine,
-		Column:   publishCol,
-		Severity: SeverityHigh,
-		Category: "SLSA-BUILD-L2",
-		RuleID:   RuleSLSAProvenance,
-		Title:    "Build provenance is not generated",
-		Description: "This workflow publishes a release artifact (container image, GitHub Release asset, package, …) but does not generate a SLSA Build provenance attestation. Without provenance, consumers cannot verify how the artifact was built.",
+		File:           file,
+		Line:           publishLine,
+		Column:         publishCol,
+		Severity:       SeverityHigh,
+		Category:       "SLSA-BUILD-L2",
+		RuleID:         RuleSLSAProvenance,
+		Title:          "Build provenance is not generated",
+		Description:    "This workflow publishes a release artifact (container image, GitHub Release asset, package, …) but does not generate a SLSA Build provenance attestation. Without provenance, consumers cannot verify how the artifact was built.",
 		Recommendation: "Add an attestation step using actions/attest-build-provenance (SLSA Build L2) or call the slsa-framework/slsa-github-generator reusable workflow (SLSA Build L3). See https://github.com/actions/attest-build-provenance.",
 	}}
 }
@@ -371,14 +371,14 @@ func CheckSLSAPermsOverlyBroad(file string, workflow *WorkflowNode, jobs []JobNo
 	var findings []Finding
 	if isWriteAllPermissions(&workflow.Permissions) {
 		findings = append(findings, Finding{
-			File:     file,
-			Line:     workflow.Permissions.Line,
-			Column:   workflow.Permissions.Column,
-			Severity: SeverityHigh,
-			Category: "SLSA-BUILD-L2",
-			RuleID:   RuleSLSAPermsOverlyBroad,
-			Title:    "Workflow permissions grant write-all",
-			Description: "The workflow-level permissions block grants write to every scope. This is no better than the implicit default — SLSA Build L2 expects least privilege.",
+			File:           file,
+			Line:           workflow.Permissions.Line,
+			Column:         workflow.Permissions.Column,
+			Severity:       SeverityHigh,
+			Category:       "SLSA-BUILD-L2",
+			RuleID:         RuleSLSAPermsOverlyBroad,
+			Title:          "Workflow permissions grant write-all",
+			Description:    "The workflow-level permissions block grants write to every scope. This is no better than the implicit default — SLSA Build L2 expects least privilege.",
 			Recommendation: "Replace write-all with the smallest set of scopes the workflow actually needs (e.g. `permissions: { contents: read }`), and grant additional writes only on the specific jobs that require them.",
 		})
 	}
@@ -500,14 +500,14 @@ func CheckSLSAVerifyStep(file string, workflow *WorkflowNode, jobs []JobNodeWith
 		return nil
 	}
 	return []Finding{{
-		File:     file,
-		Line:     line,
-		Column:   col,
-		Severity: SeverityInfo,
-		Category: "SLSA-BUILD-L2",
-		RuleID:   RuleSLSAVerifyStep,
-		Title:    "Workflow consumes artifacts but does not verify provenance",
-		Description: "This workflow downloads artifacts or pulls a container image without a provenance-verification step. SLSA Build L2's consumer side is unfulfilled unless artifacts are verified before use.",
+		File:           file,
+		Line:           line,
+		Column:         col,
+		Severity:       SeverityInfo,
+		Category:       "SLSA-BUILD-L2",
+		RuleID:         RuleSLSAVerifyStep,
+		Title:          "Workflow consumes artifacts but does not verify provenance",
+		Description:    "This workflow downloads artifacts or pulls a container image without a provenance-verification step. SLSA Build L2's consumer side is unfulfilled unless artifacts are verified before use.",
 		Recommendation: "Add a verification step before using the artifact, e.g.: `gh attestation verify <file> --owner <org>`, `slsa-verifier verify-artifact ...`, or `cosign verify-attestation ...`.",
 	}}
 }
