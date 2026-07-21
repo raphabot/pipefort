@@ -73,6 +73,9 @@ type JobNode struct {
 	Env            yaml.Node `yaml:"env"`
 	Concurrency    yaml.Node `yaml:"concurrency"`
 	Steps          yaml.Node `yaml:"steps"`
+	// Uses is a job-level `uses:` — i.e. the job calls a reusable workflow
+	// (owner/repo/.github/workflows/x.yml@ref). Empty for normal step-based jobs.
+	Uses           yaml.Node `yaml:"uses"`
 	If             yaml.Node `yaml:"if"`
 	TimeoutMinutes yaml.Node `yaml:"timeout-minutes"`
 }

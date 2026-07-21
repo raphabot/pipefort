@@ -31,6 +31,14 @@ var reSHA40 = regexp.MustCompile(`^[a-fA-F0-9]{40}$`)
 // line comment so a SHA pin's documented version can be checked.
 var reVersionToken = regexp.MustCompile(`v?\d+(\.\d+){0,2}`)
 
+// Ref kinds distinguish a step-level action call from a job-level reusable
+// workflow call. Both are `uses:` references but live at different levels and
+// mean different things for inventory.
+const (
+	RefKindAction           = "action"
+	RefKindReusableWorkflow = "reusable-workflow"
+)
+
 // ActionRef is a single third-party `uses: owner/repo[/path]@ref` reference,
 // with the trailing line comment captured for ref-version-mismatch.
 type ActionRef struct {
@@ -42,6 +50,13 @@ type ActionRef struct {
 	Ref            string // tag, branch, or 40-hex SHA after '@'
 	Raw            string // full "owner/repo@ref" as written
 	VersionComment string // trailing "# v3" comment text, if any
+	// Kind is RefKindAction for a step-level action, or RefKindReusableWorkflow
+	// for a job-level reusable-workflow call. Empty on refs from callers that
+	// predate this field; treat empty as RefKindAction.
+	Kind string
+	// Path is the reusable workflow's path within its repo (e.g.
+	// ".github/workflows/build.yml"). Empty for actions.
+	Path string
 }
 
 // Advisory is a minimal view of a GitHub security advisory affecting an action.
@@ -104,10 +119,75 @@ func CollectActionRefs(file string, workflow *WorkflowNode, jobs []JobNodeWithID
 				Ref:            at[1],
 				Raw:            val,
 				VersionComment: strings.TrimSpace(strings.TrimLeft(step.Uses.LineComment, "# ")),
+				Kind:           RefKindAction,
 			})
 		}
 	}
 	return refs
+}
+
+// CollectReusableWorkflowRefs extracts every remote reusable-workflow call from
+// a parsed workflow — the job-level `uses: owner/repo/.github/workflows/x.yml@ref`
+// that CollectActionRefs (which only reads step-level `uses:`) deliberately
+// skips. Local calls (`./...`) are omitted: they aren't third-party. Kept a
+// separate collector so callers that only want action refs (and the pin-audit /
+// detection paths) are unaffected.
+func CollectReusableWorkflowRefs(file string, jobs []JobNodeWithID) []ActionRef {
+	var refs []ActionRef
+	for _, jobWrap := range jobs {
+		val := jobWrap.Node.Uses.Value
+		if val == "" || strings.HasPrefix(val, "./") || strings.HasPrefix(val, ".github/") {
+			continue
+		}
+		at := strings.SplitN(val, "@", 2)
+		if len(at) != 2 {
+			continue
+		}
+		// owner/repo/<path...> — need at least owner, repo, and one path segment.
+		parts := strings.Split(at[0], "/")
+		if len(parts) < 3 {
+			continue
+		}
+		refs = append(refs, ActionRef{
+			File:           file,
+			Line:           jobWrap.Node.Uses.Line,
+			Column:         jobWrap.Node.Uses.Column,
+			Owner:          parts[0],
+			Repo:           parts[1],
+			Ref:            at[1],
+			Raw:            val,
+			VersionComment: strings.TrimSpace(strings.TrimLeft(jobWrap.Node.Uses.LineComment, "# ")),
+			Kind:           RefKindReusableWorkflow,
+			Path:           strings.Join(parts[2:], "/"),
+		})
+	}
+	return refs
+}
+
+// CollectReusableWorkflowRefsFromBytes parses one GitHub workflow file's bytes
+// and returns its remote reusable-workflow calls. GitLab files yield nothing.
+// Mirror of CollectActionRefsFromBytes for the job-level surface.
+func CollectReusableWorkflowRefsFromBytes(name string, content []byte) []ActionRef {
+	if IsGitLabCIPath(name) {
+		return nil
+	}
+	var workflow WorkflowNode
+	if err := yaml.Unmarshal(content, &workflow); err != nil {
+		return nil
+	}
+	if workflow.Jobs.Kind != yaml.MappingNode {
+		return nil
+	}
+	var jobs []JobNodeWithID
+	for i := 0; i+1 < len(workflow.Jobs.Content); i += 2 {
+		keyNode := workflow.Jobs.Content[i]
+		valNode := workflow.Jobs.Content[i+1]
+		var job JobNode
+		if err := valNode.Decode(&job); err == nil {
+			jobs = append(jobs, JobNodeWithID{ID: keyNode.Value, Line: keyNode.Line, Column: keyNode.Column, Node: job})
+		}
+	}
+	return CollectReusableWorkflowRefs(name, jobs)
 }
 
 // CollectActionRefsFromBytes parses one GitHub workflow file's bytes and returns
