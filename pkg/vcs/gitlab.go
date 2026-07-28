@@ -390,6 +390,56 @@ func (g *GitLabClient) FixWorkflow(ctx context.Context, token string, repo RepoC
 	if !IsAutoFixableWorkflowRule(ruleID) {
 		return res, fmt.Errorf("rule %s has no workflow auto-fix", ruleID)
 	}
+
+	return g.fixWorkflowFileWith(ctx, token, repo, defaultBranch, filePath, res,
+		func(fresh []scanner.Finding) []scanner.Finding {
+			return scopedFindings(fresh, ruleID, filePath)
+		},
+		workflowFixNaming{
+			branch: ChangeBranchName(ruleID, filePath),
+			commit: ChangeCommitMessage(ruleID, filePath),
+			title:  ChangeRequestTitle(ruleID),
+			body: func(fixesCount int) string {
+				return ChangeRequestBody(ruleID, filePath, fixesCount)
+			},
+		})
+}
+
+// FixWorkflowRules is the batched, file-scoped MR twin of the GitHub client's
+// FixWorkflowFileRules: every requested rule for one file lands in a single
+// merge request. See that method for why campaigns need it.
+func (g *GitLabClient) FixWorkflowRules(ctx context.Context, token string, repo RepoCoord, defaultBranch, filePath string, ruleIDs []scanner.RuleID) (ChangeRequestResult, error) {
+	fixable := fixableRules(ruleIDs)
+	res := ChangeRequestResult{Provider: ProviderGitLab, RuleIDs: fixable, File: filePath}
+	if len(fixable) == 0 {
+		return res, fmt.Errorf("no auto-fixable workflow rules requested for %s", filePath)
+	}
+
+	return g.fixWorkflowFileWith(ctx, token, repo, defaultBranch, filePath, res,
+		func(fresh []scanner.Finding) []scanner.Finding {
+			return scopedFindingsForRules(fresh, fixable, filePath)
+		},
+		workflowFixNaming{
+			branch: ChangeBranchNameForFile(filePath),
+			commit: ChangeCommitMessageForFile(filePath, len(fixable)),
+			title:  ChangeRequestTitleForFile(filePath),
+			body: func(fixesCount int) string {
+				return ChangeRequestBodyForFile(filePath, fixable, fixesCount)
+			},
+		})
+}
+
+// fixWorkflowFileWith is the 5-step MR dance, shared by the per-rule and
+// batched entry points. Mirrors the GitHub client's method of the same name.
+func (g *GitLabClient) fixWorkflowFileWith(
+	ctx context.Context,
+	token string,
+	repo RepoCoord,
+	defaultBranch, filePath string,
+	res ChangeRequestResult,
+	selectFindings func([]scanner.Finding) []scanner.Finding,
+	naming workflowFixNaming,
+) (ChangeRequestResult, error) {
 	if defaultBranch == "" {
 		defaultBranch = "main"
 	}
@@ -407,12 +457,12 @@ func (g *GitLabClient) FixWorkflow(ctx context.Context, token string, repo RepoC
 		return res, fmt.Errorf("file %s not found on %s", filePath, defaultBranch)
 	}
 
-	// 2. Re-scan + apply the fixer.
+	// 2. Re-scan + apply the fixer(s) in one pass.
 	fresh, err := scanner.ScanBytes(filePath, current)
 	if err != nil {
 		return res, fmt.Errorf("scan %s: %w", filePath, err)
 	}
-	scoped := scopedFindings(fresh, ruleID, filePath)
+	scoped := selectFindings(fresh)
 	if len(scoped) == 0 {
 		res.NoChange = true
 		return res, ErrChangeRequestNoChange
@@ -428,7 +478,7 @@ func (g *GitLabClient) FixWorkflow(ctx context.Context, token string, repo RepoC
 	res.FixesApplied = fixesCount
 
 	// 3. Ensure the deterministic fix branch exists.
-	branchName := ChangeBranchName(ruleID, filePath)
+	branchName := naming.branch
 	res.BranchName = branchName
 	if err := g.ensureBranch(ctx, token, host, repo.ID, defaultBranch, branchName); err != nil {
 		return res, fmt.Errorf("ensure branch %s: %w", branchName, err)
@@ -437,9 +487,9 @@ func (g *GitLabClient) FixWorkflow(ctx context.Context, token string, repo RepoC
 	// 4. Commit the rewritten file to the branch. Try "update"; if the file
 	// doesn't exist on the branch yet (e.g. the branch was reused after the
 	// file moved on default), retry once with "create".
-	if err := g.commitToBranch(ctx, token, host, repo.ID, branchName, filePath, newContent, ruleID, "update"); err != nil {
+	if err := g.commitToBranch(ctx, token, host, repo.ID, branchName, filePath, newContent, naming.commit, "update"); err != nil {
 		if gitlabIsFileNotFound(err) {
-			if err2 := g.commitToBranch(ctx, token, host, repo.ID, branchName, filePath, newContent, ruleID, "create"); err2 != nil {
+			if err2 := g.commitToBranch(ctx, token, host, repo.ID, branchName, filePath, newContent, naming.commit, "create"); err2 != nil {
 				return res, fmt.Errorf("commit %s on %s: %w", filePath, branchName, err2)
 			}
 		} else {
@@ -448,7 +498,7 @@ func (g *GitLabClient) FixWorkflow(ctx context.Context, token string, repo RepoC
 	}
 
 	// 5. Open the MR (or reuse the existing open one for this source branch).
-	mrURL, mrIID, reused, err := g.openOrReuseMR(ctx, token, host, repo.ID, defaultBranch, branchName, ruleID, filePath, fixesCount)
+	mrURL, mrIID, reused, err := g.openOrReuseMR(ctx, token, host, repo.ID, defaultBranch, branchName, naming.title, naming.body(fixesCount))
 	if err != nil {
 		return res, fmt.Errorf("open MR: %w", err)
 	}
@@ -475,11 +525,11 @@ func (g *GitLabClient) ensureBranch(ctx context.Context, token, host, projectID,
 }
 
 // commitToBranch posts a single-file commit. action is "update" or "create".
-func (g *GitLabClient) commitToBranch(ctx context.Context, token, host, projectID, branch, filePath string, content []byte, ruleID scanner.RuleID, action string) error {
+func (g *GitLabClient) commitToBranch(ctx context.Context, token, host, projectID, branch, filePath string, content []byte, commitMessage, action string) error {
 	u := fmt.Sprintf("%s/projects/%s/repository/commits", g.api(host), url.PathEscape(projectID))
 	body := map[string]any{
 		"branch":         branch,
-		"commit_message": ChangeCommitMessage(ruleID, filePath),
+		"commit_message": commitMessage,
 		"actions": []map[string]string{{
 			"action":    action,
 			"file_path": filePath,
@@ -491,12 +541,12 @@ func (g *GitLabClient) commitToBranch(ctx context.Context, token, host, projectI
 
 // openOrReuseMR opens a merge request from source→target; if GitLab reports
 // an existing MR for the source branch, look it up and return that instead.
-func (g *GitLabClient) openOrReuseMR(ctx context.Context, token, host, projectID, targetBranch, sourceBranch string, ruleID scanner.RuleID, filePath string, fixesCount int) (string, int, bool, error) {
+func (g *GitLabClient) openOrReuseMR(ctx context.Context, token, host, projectID, targetBranch, sourceBranch, title, description string) (string, int, bool, error) {
 	create := map[string]any{
 		"source_branch":        sourceBranch,
 		"target_branch":        targetBranch,
-		"title":                ChangeRequestTitle(ruleID),
-		"description":          ChangeRequestBody(ruleID, filePath, fixesCount),
+		"title":                title,
+		"description":          description,
 		"remove_source_branch": true,
 	}
 	u := fmt.Sprintf("%s/projects/%s/merge_requests", g.api(host), url.PathEscape(projectID))

@@ -42,15 +42,19 @@ type RepoView struct {
 // handler envelope (handleFixFinding) carries the provider so the SPA can
 // label the link "Pull request" vs "Merge request".
 type ChangeRequestResult struct {
-	Provider     string         `json:"provider"`
-	RuleID       scanner.RuleID `json:"rule_id"`
-	File         string         `json:"file"`
-	FixesApplied int            `json:"fixes_applied"`
-	URL          string         `json:"url"`    // PR html_url for GitHub, MR web_url for GitLab
-	Number       int            `json:"number"` // PR number for GitHub, MR iid for GitLab
-	BranchName   string         `json:"branch_name"`
-	Reused       bool           `json:"reused"`    // true when an existing PR/MR was returned without re-fixing
-	NoChange     bool           `json:"no_change"` // true when FixBytes produced no diff
+	Provider string         `json:"provider"`
+	RuleID   scanner.RuleID `json:"rule_id"`
+	// RuleIDs lists every rule remediated by this change request. Per-rule
+	// remediation leaves it empty (RuleID says it all); the batched,
+	// file-scoped path fills it in, since one PR then carries several fixes.
+	RuleIDs      []scanner.RuleID `json:"rule_ids,omitempty"`
+	File         string           `json:"file"`
+	FixesApplied int              `json:"fixes_applied"`
+	URL          string           `json:"url"`    // PR html_url for GitHub, MR web_url for GitLab
+	Number       int              `json:"number"` // PR number for GitHub, MR iid for GitLab
+	BranchName   string           `json:"branch_name"`
+	Reused       bool             `json:"reused"`    // true when an existing PR/MR was returned without re-fixing
+	NoChange     bool             `json:"no_change"` // true when FixBytes produced no diff
 }
 
 // ErrChangeRequestNoChange signals that the fetched file did not need any
@@ -97,6 +101,29 @@ func ChangeBranchName(ruleID scanner.RuleID, filePath string) string {
 	return fmt.Sprintf("pipefort/fix/%s/%s", string(ruleID), branchSafeFilename(filePath))
 }
 
+// branchSafePath slugs the *whole* path rather than just the basename. The
+// per-rule branches key on the basename, which is fine for a single Fix click
+// but not for the batched path: a campaign walks every workflow file in a repo,
+// where two `ci.yml` files in different directories are perfectly ordinary and
+// must not converge on one branch.
+func branchSafePath(filePath string) string {
+	slug := nonSlugRe.ReplaceAllString(strings.ToLower(filePath), "-")
+	slug = strings.Trim(slug, "-")
+	if slug == "" {
+		slug = "workflow"
+	}
+	return slug
+}
+
+// ChangeBranchNameForFile composes the branch name for a *batched* remediation
+// — every fixable rule for one file in a single change request. It lives in a
+// separate `file/` namespace from ChangeBranchName's per-rule branches so both
+// can coexist on a repository without colliding (and without a git
+// directory/file ref conflict).
+func ChangeBranchNameForFile(filePath string) string {
+	return fmt.Sprintf("pipefort/fix/file/%s", branchSafePath(filePath))
+}
+
 // ChangeRequestTitle / ChangeRequestBody are shared between providers so the
 // PR and MR bodies read the same.
 func ChangeRequestTitle(ruleID scanner.RuleID) string {
@@ -121,10 +148,44 @@ func ChangeRequestBody(ruleID scanner.RuleID, filePath string, fixesCount int) s
 	)
 }
 
+// ChangeRequestTitleForFile / ChangeRequestBodyForFile are the batched
+// equivalents: one change request covering several rules in one file, so the
+// title names the file and the body itemizes the rules.
+func ChangeRequestTitleForFile(filePath string) string {
+	return fmt.Sprintf("Pipefort fix: harden %s", filePath)
+}
+
+func ChangeRequestBodyForFile(filePath string, ruleIDs []scanner.RuleID, fixesCount int) string {
+	byID := scanner.RuleByID()
+	var lines strings.Builder
+	for _, id := range ruleIDs {
+		docLink := "https://docs.pipefort.com/rules/overview"
+		title := string(id)
+		if spec, ok := byID[id]; ok {
+			if spec.DocURL != "" {
+				docLink = "https://docs.pipefort.com" + spec.DocURL
+			}
+			title = spec.Title
+		}
+		fmt.Fprintf(&lines, "- [`%s`](%s) — %s\n", id, docLink, title)
+	}
+	return fmt.Sprintf(
+		"Pipefort rewrote `%s` to remediate %d finding%s in a single change (%d rule%s):\n\n%s\n"+
+			"Review the diff carefully before merging — auto-fixers are conservative but assume the fixed shape works for your specific deployment.\n",
+		filePath, fixesCount, plural(fixesCount), len(ruleIDs), plural(len(ruleIDs)), lines.String(),
+	)
+}
+
 // ChangeCommitMessage is the commit message used when committing the rewritten
 // CI YAML file to the remediation branch.
 func ChangeCommitMessage(ruleID scanner.RuleID, filePath string) string {
 	return fmt.Sprintf("Pipefort: fix %s in %s", ruleID, filePath)
+}
+
+// ChangeCommitMessageForFile is the batched equivalent: one commit carrying
+// every rule's fix for the file.
+func ChangeCommitMessageForFile(filePath string, ruleCount int) string {
+	return fmt.Sprintf("Pipefort: harden %s (%d rule%s)", filePath, ruleCount, plural(ruleCount))
 }
 
 func plural(n int) string {

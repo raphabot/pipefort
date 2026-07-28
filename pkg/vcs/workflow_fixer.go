@@ -85,6 +85,79 @@ func (g *GitHubClient) FixWorkflowFile(
 	if !IsAutoFixableWorkflowRule(ruleID) {
 		return res, fmt.Errorf("rule %s has no workflow auto-fix", ruleID)
 	}
+
+	return g.fixWorkflowFileWith(ctx, token, owner, repo, defaultBranch, filePath, res,
+		func(fresh []scanner.Finding) []scanner.Finding {
+			return scopedFindings(fresh, ruleID, filePath)
+		},
+		workflowFixNaming{
+			branch: ChangeBranchName(ruleID, filePath),
+			commit: ChangeCommitMessage(ruleID, filePath),
+			title:  ChangeRequestTitle(ruleID),
+			body: func(fixesCount int) string {
+				return ChangeRequestBody(ruleID, filePath, fixesCount)
+			},
+		})
+}
+
+// FixWorkflowFileRules remediates *every* requested rule in one file with a
+// single change request — the bulk-remediation campaign path.
+//
+// The per-rule FixWorkflowFile above is still the right call for the
+// per-finding "Fix" button, where the user asked for exactly one fix. But a
+// campaign fixing a workflow with five findings would otherwise open five PRs
+// against the same file, each branched independently off the default branch:
+// noisy to review, and the ones touching the same region conflict as soon as a
+// sibling merges. Batching gives one branch, one commit, one PR per file.
+//
+// Rules without a workflow auto-fixer are ignored rather than fatal, so a
+// caller can pass everything it found; ErrChangeRequestNoChange is returned
+// when none of them still apply to the fetched content.
+func (g *GitHubClient) FixWorkflowFileRules(
+	ctx context.Context,
+	token, owner, repo, defaultBranch, filePath string,
+	ruleIDs []scanner.RuleID,
+) (ChangeRequestResult, error) {
+	fixable := fixableRules(ruleIDs)
+	res := ChangeRequestResult{Provider: ProviderGitHub, RuleIDs: fixable, File: filePath}
+	if len(fixable) == 0 {
+		return res, fmt.Errorf("no auto-fixable workflow rules requested for %s", filePath)
+	}
+
+	return g.fixWorkflowFileWith(ctx, token, owner, repo, defaultBranch, filePath, res,
+		func(fresh []scanner.Finding) []scanner.Finding {
+			return scopedFindingsForRules(fresh, fixable, filePath)
+		},
+		workflowFixNaming{
+			branch: ChangeBranchNameForFile(filePath),
+			commit: ChangeCommitMessageForFile(filePath, len(fixable)),
+			title:  ChangeRequestTitleForFile(filePath),
+			body: func(fixesCount int) string {
+				return ChangeRequestBodyForFile(filePath, fixable, fixesCount)
+			},
+		})
+}
+
+// workflowFixNaming supplies the strings that distinguish a per-rule change
+// request from a batched, file-scoped one. The body is a callback because the
+// fix count is only known once the fixer has run.
+type workflowFixNaming struct {
+	branch string
+	commit string
+	title  string
+	body   func(fixesCount int) string
+}
+
+// fixWorkflowFileWith is the 5-step Git Data dance itself, shared by the
+// per-rule and batched entry points. selectFindings narrows the fresh scan to
+// the findings this change request should remediate.
+func (g *GitHubClient) fixWorkflowFileWith(
+	ctx context.Context,
+	token, owner, repo, defaultBranch, filePath string,
+	res ChangeRequestResult,
+	selectFindings func([]scanner.Finding) []scanner.Finding,
+	naming workflowFixNaming,
+) (ChangeRequestResult, error) {
 	if defaultBranch == "" {
 		defaultBranch = "main"
 	}
@@ -95,12 +168,14 @@ func (g *GitHubClient) FixWorkflowFile(
 		return res, fmt.Errorf("fetch %s: %w", filePath, err)
 	}
 
-	// 2. Re-scan the fresh content for the target rule and apply the fixer.
+	// 2. Re-scan the fresh content and apply the fixer(s). scanner.FixBytes
+	// applies every finding it is handed in one pass over one YAML document,
+	// which is what lets the batched path produce a single commit.
 	fresh, err := scanner.ScanBytes(filePath, current)
 	if err != nil {
 		return res, fmt.Errorf("scan %s: %w", filePath, err)
 	}
-	scoped := scopedFindings(fresh, ruleID, filePath)
+	scoped := selectFindings(fresh)
 	if len(scoped) == 0 {
 		res.NoChange = true
 		return res, ErrChangeRequestNoChange
@@ -116,7 +191,7 @@ func (g *GitHubClient) FixWorkflowFile(
 	res.FixesApplied = fixesCount
 
 	// 3. Create (or reuse) the deterministic fix branch.
-	branchName := ChangeBranchName(ruleID, filePath)
+	branchName := naming.branch
 	res.BranchName = branchName
 	if err := g.ensureFixBranch(ctx, token, owner, repo, defaultBranch, branchName); err != nil {
 		return res, fmt.Errorf("ensure branch %s: %w", branchName, err)
@@ -131,18 +206,18 @@ func (g *GitHubClient) FixWorkflowFile(
 			branchSHA = sha
 		} else {
 			branchSHA = sha
-			if err := g.putFileContents(ctx, token, owner, repo, filePath, branchName, newContent, sha, ChangeCommitMessage(ruleID, filePath)); err != nil {
+			if err := g.putFileContents(ctx, token, owner, repo, filePath, branchName, newContent, sha, naming.commit); err != nil {
 				return res, fmt.Errorf("put %s on %s: %w", filePath, branchName, err)
 			}
 		}
 	} else {
-		if err := g.putFileContents(ctx, token, owner, repo, filePath, branchName, newContent, branchSHA, ChangeCommitMessage(ruleID, filePath)); err != nil {
+		if err := g.putFileContents(ctx, token, owner, repo, filePath, branchName, newContent, branchSHA, naming.commit); err != nil {
 			return res, fmt.Errorf("put %s on %s: %w", filePath, branchName, err)
 		}
 	}
 
 	// 5. Open the PR (or reuse the existing one for this head ref).
-	prURL, prNumber, reused, err := g.openOrReusePR(ctx, token, owner, repo, defaultBranch, branchName, ChangeRequestTitle(ruleID), ChangeRequestBody(ruleID, filePath, fixesCount))
+	prURL, prNumber, reused, err := g.openOrReusePR(ctx, token, owner, repo, defaultBranch, branchName, naming.title, naming.body(fixesCount))
 	if err != nil {
 		return res, fmt.Errorf("open PR: %w", err)
 	}
@@ -150,6 +225,43 @@ func (g *GitHubClient) FixWorkflowFile(
 	res.Number = prNumber
 	res.Reused = reused
 	return res, nil
+}
+
+// fixableRules returns the deduped, sorted subset of the requested rules that
+// actually has a workflow auto-fixer. Sorting keeps the branch content, commit
+// message, and PR body deterministic regardless of the caller's ordering.
+func fixableRules(ruleIDs []scanner.RuleID) []scanner.RuleID {
+	seen := make(map[scanner.RuleID]bool, len(ruleIDs))
+	out := make([]scanner.RuleID, 0, len(ruleIDs))
+	for _, id := range ruleIDs {
+		if seen[id] || !IsAutoFixableWorkflowRule(id) {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out
+}
+
+// scopedFindingsForRules is scopedFindings' batched twin: it keeps every
+// finding for this file whose rule is in the requested set.
+func scopedFindingsForRules(findings []scanner.Finding, ruleIDs []scanner.RuleID, filePath string) []scanner.Finding {
+	want := make(map[scanner.RuleID]bool, len(ruleIDs))
+	for _, id := range ruleIDs {
+		want[id] = true
+	}
+	out := make([]scanner.Finding, 0, len(findings))
+	for _, f := range findings {
+		if !want[f.RuleID] {
+			continue
+		}
+		if f.File != "" && f.File != filePath {
+			continue
+		}
+		out = append(out, f)
+	}
+	return out
 }
 
 // scopedFindings narrows the input slice to findings matching the rule ID
