@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -371,3 +373,183 @@ func TestAutoFixableWorkflowRulesIsSortedAndComplete(t *testing.T) {
 // (Mirrors the recordedRequest type from settings_fixer_test.go via the
 // shared mockResponse type. Kept here for clarity in case those tests move.)
 var _ = fmt.Sprintf
+
+// --- Batched, file-scoped remediation -------------------------------------
+//
+// FixWorkflowFileRules is the campaign path: every fixable rule for one file
+// lands in ONE change request. The per-rule FixWorkflowFile above stays as the
+// per-finding "Fix" button's path.
+
+func TestFixWorkflowFileRules_BatchesEveryRuleIntoOnePR(t *testing.T) {
+	mock := newWorkflowFixMock(t)
+	// The fixture trips two fixable rules: missing permissions and missing
+	// timeout. Per-rule remediation would open two PRs from two branches.
+	mock.fileContent = []byte(vulnerableMissingPermissions)
+	mock.fileSHA = "blobsha"
+	mock.fileBranch = "main"
+
+	c := newTestGitHubClient(t, mock.server.URL)
+	res, err := c.FixWorkflowFileRules(
+		context.Background(),
+		"tok", "acme", "widgets", "main",
+		".github/workflows/ci.yml",
+		[]scanner.RuleID{scanner.RuleMissingPermissions, scanner.RuleMissingTimeout},
+	)
+	if err != nil {
+		t.Fatalf("FixWorkflowFileRules: %v", err)
+	}
+
+	// One PR, opened from a file-scoped branch (not a rule-scoped one).
+	if res.URL != "https://github.com/acme/widgets/pull/42" || res.Number != 42 {
+		t.Errorf("unexpected PR: %+v", res)
+	}
+	if want := "pipefort/fix/file/github-workflows-ci-yml"; res.BranchName != want {
+		t.Errorf("branch = %q, want %q", res.BranchName, want)
+	}
+	// Both rules fixed in a single commit.
+	if res.FixesApplied != 2 {
+		t.Errorf("FixesApplied = %d, want 2 (both rules in one commit)", res.FixesApplied)
+	}
+	if puts := mock.callsByMethod(http.MethodPut); len(puts) != 1 {
+		t.Errorf("expected exactly 1 content PUT, got %d", len(puts))
+	}
+	var opened int
+	for _, c := range mock.callsByMethod(http.MethodPost) {
+		if strings.HasSuffix(c.Path, "/pulls") {
+			opened++
+		}
+	}
+	if opened != 1 {
+		t.Errorf("expected exactly 1 PR opened, got %d", opened)
+	}
+}
+
+// The batched path walks every workflow file in a repo, so two files sharing a
+// basename (ci.yml in two directories) must not converge on one branch — that
+// would push both files' commits onto the same PR.
+func TestChangeBranchNameForFile_DistinguishesSameBasename(t *testing.T) {
+	a := ChangeBranchNameForFile(".github/workflows/ci.yml")
+	b := ChangeBranchNameForFile(".github/workflows/nested/ci.yml")
+	if a == b {
+		t.Errorf("branches collide for distinct files: both %q", a)
+	}
+	if want := "pipefort/fix/file/github-workflows-ci-yml"; a != want {
+		t.Errorf("branch = %q, want %q", a, want)
+	}
+}
+
+// A campaign hands over whatever its scan found; rules with no workflow fixer
+// are filtered out rather than failing the whole file.
+func TestFixWorkflowFileRules_IgnoresRulesWithoutFixers(t *testing.T) {
+	mock := newWorkflowFixMock(t)
+	mock.fileContent = []byte(vulnerableMissingPermissions)
+	mock.fileSHA = "blobsha"
+	mock.fileBranch = "main"
+
+	c := newTestGitHubClient(t, mock.server.URL)
+	res, err := c.FixWorkflowFileRules(
+		context.Background(),
+		"tok", "acme", "widgets", "main",
+		".github/workflows/ci.yml",
+		[]scanner.RuleID{
+			scanner.RuleMissingPermissions,
+			"totally-not-a-rule",
+			scanner.RuleMissingTimeout,
+			scanner.RuleMissingPermissions, // duplicate
+		},
+	)
+	if err != nil {
+		t.Fatalf("FixWorkflowFileRules: %v", err)
+	}
+	// Deduped, sorted, unfixable dropped.
+	want := []scanner.RuleID{scanner.RuleMissingTimeout, scanner.RuleMissingPermissions}
+	sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
+	if len(res.RuleIDs) != len(want) {
+		t.Fatalf("RuleIDs = %v, want %v", res.RuleIDs, want)
+	}
+	for i := range want {
+		if res.RuleIDs[i] != want[i] {
+			t.Fatalf("RuleIDs = %v, want %v", res.RuleIDs, want)
+		}
+	}
+}
+
+func TestFixWorkflowFileRules_NoFixableRulesIsAnError(t *testing.T) {
+	mock := newWorkflowFixMock(t)
+	c := newTestGitHubClient(t, mock.server.URL)
+
+	_, err := c.FixWorkflowFileRules(
+		context.Background(),
+		"tok", "acme", "widgets", "main",
+		".github/workflows/ci.yml",
+		[]scanner.RuleID{"totally-not-a-rule"},
+	)
+	if err == nil {
+		t.Fatal("expected an error when no requested rule is auto-fixable")
+	}
+	if len(mock.calls) != 0 {
+		t.Errorf("expected no API calls, got %d", len(mock.calls))
+	}
+}
+
+// Already-remediated content must not open an empty PR.
+func TestFixWorkflowFileRules_NoChangeWhenAlreadyClean(t *testing.T) {
+	const clean = `name: test
+on: push
+permissions: read-all
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - run: echo hi
+`
+	mock := newWorkflowFixMock(t)
+	mock.fileContent = []byte(clean)
+	mock.fileSHA = "blobsha"
+	mock.fileBranch = "main"
+
+	c := newTestGitHubClient(t, mock.server.URL)
+	res, err := c.FixWorkflowFileRules(
+		context.Background(),
+		"tok", "acme", "widgets", "main",
+		".github/workflows/ci.yml",
+		[]scanner.RuleID{scanner.RuleMissingPermissions, scanner.RuleMissingTimeout},
+	)
+	if !errors.Is(err, ErrChangeRequestNoChange) {
+		t.Fatalf("err = %v, want ErrChangeRequestNoChange", err)
+	}
+	if !res.NoChange {
+		t.Error("expected NoChange to be set")
+	}
+	for _, c := range mock.calls {
+		if c.Method == http.MethodPost && strings.HasSuffix(c.Path, "/pulls") {
+			t.Error("opened a PR for an already-clean file")
+		}
+	}
+}
+
+// Re-running a campaign converges on the file's existing PR instead of piling
+// up duplicates.
+func TestFixWorkflowFileRules_ReusesExistingPR(t *testing.T) {
+	mock := newWorkflowFixMock(t)
+	mock.fileContent = []byte(vulnerableMissingPermissions)
+	mock.fileSHA = "blobsha"
+	mock.fileBranch = "main"
+	mock.refExists = true
+	mock.prExists = true
+
+	c := newTestGitHubClient(t, mock.server.URL)
+	res, err := c.FixWorkflowFileRules(
+		context.Background(),
+		"tok", "acme", "widgets", "main",
+		".github/workflows/ci.yml",
+		[]scanner.RuleID{scanner.RuleMissingPermissions, scanner.RuleMissingTimeout},
+	)
+	if err != nil {
+		t.Fatalf("FixWorkflowFileRules: %v", err)
+	}
+	if !res.Reused || res.URL != mock.existingPRURL {
+		t.Errorf("expected the existing PR to be reused, got %+v", res)
+	}
+}

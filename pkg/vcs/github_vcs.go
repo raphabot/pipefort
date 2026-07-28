@@ -70,3 +70,10 @@ func (g *GitHubClient) FixSetting(ctx context.Context, token string, repo RepoCo
 func (g *GitHubClient) FixWorkflow(ctx context.Context, token string, repo RepoCoord, defaultBranch, filePath string, ruleID scanner.RuleID) (ChangeRequestResult, error) {
 	return g.FixWorkflowFile(ctx, token, repo.Owner, repo.Name, defaultBranch, filePath, ruleID)
 }
+
+// FixWorkflowRules is the batched, file-scoped twin of FixWorkflow: every
+// requested rule for one file in a single pull request. Provider-neutral
+// signature so campaign callers can treat GitHub and GitLab identically.
+func (g *GitHubClient) FixWorkflowRules(ctx context.Context, token string, repo RepoCoord, defaultBranch, filePath string, ruleIDs []scanner.RuleID) (ChangeRequestResult, error) {
+	return g.FixWorkflowFileRules(ctx, token, repo.Owner, repo.Name, defaultBranch, filePath, ruleIDs)
+}
