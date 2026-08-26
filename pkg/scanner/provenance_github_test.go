@@ -314,6 +314,11 @@ func TestSameHost(t *testing.T) {
 		{"https://API.GitHub.com/x", "https://api.github.com", true},
 		{"https://tmaproduction.blob.core.windows.net/x", "https://api.github.com", false},
 		{"://bad", "https://api.github.com", false},
+		// The classic bypass: userinfo that reads like the trusted host. The
+		// real host is evil.com, and the token must not follow.
+		{"https://api.github.com@evil.com/x", "https://api.github.com", false},
+		{"https://api.github.com.evil.com/x", "https://api.github.com", false},
+		{"https://api.github.com:8443/x", "https://api.github.com", false},
 	} {
 		if got := sameHost(tc.a, tc.b); got != tc.want {
 			t.Errorf("sameHost(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
