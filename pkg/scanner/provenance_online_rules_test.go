@@ -143,12 +143,40 @@ func TestAuditReleaseProvenanceUnexpectedIdentity(t *testing.T) {
 			},
 		},
 	}
-	findings, _ := auditProvenance(v)
+	findings, records := auditProvenance(v)
 	if !hasRule(findings, RuleSLSAAttestationIdentity) {
 		t.Fatalf("want %s, got %+v", RuleSLSAAttestationIdentity, findings)
 	}
 	if !strings.Contains(findings[0].Description, "https://github.com/attacker/widget") {
 		t.Errorf("description should name the unexpected source, got %q", findings[0].Description)
+	}
+	// The state, not just the finding, has to carry it. Everything downstream
+	// stores and renders the state; leaving it "verified" would show the one
+	// case this pass exists to catch as a pass.
+	if len(records) != 1 || records[0].Result.State != ProvenanceForeignSigner {
+		t.Fatalf("want the record downgraded to %q, got %+v", ProvenanceForeignSigner, records)
+	}
+}
+
+// A certificate with no Source Repository URI cannot be credited to this
+// repository. Treating a missing extension as a pass is fail-open on the one
+// field that decides whether the signature means anything.
+func TestAuditReleaseProvenanceAbsentSourceIsNotVerified(t *testing.T) {
+	v := &fakeVerifier{
+		artifacts: []ReleaseArtifact{asset("widget.tar.gz")},
+		results: map[string]ProvenanceResult{
+			"widget.tar.gz": {State: ProvenanceVerified, SourceRepoURI: ""},
+		},
+	}
+	findings, records := auditProvenance(v)
+	if !hasRule(findings, RuleSLSAAttestationIdentity) {
+		t.Fatalf("want %s, got %+v", RuleSLSAAttestationIdentity, findings)
+	}
+	if records[0].Result.State != ProvenanceForeignSigner {
+		t.Errorf("state = %q, want %q", records[0].Result.State, ProvenanceForeignSigner)
+	}
+	if !strings.Contains(findings[0].Description, "no source repository") {
+		t.Errorf("description should say the certificate names none, got %q", findings[0].Description)
 	}
 }
 
@@ -161,9 +189,12 @@ func TestAuditReleaseProvenanceIdentityCaseInsensitive(t *testing.T) {
 			"widget.tar.gz": {State: ProvenanceVerified, SourceRepoURI: "https://github.com/ACME/Widget"},
 		},
 	}
-	findings, _ := auditProvenance(v)
+	findings, records := auditProvenance(v)
 	if len(findings) != 0 {
 		t.Errorf("case-only difference must not fire, got %+v", findings)
+	}
+	if records[0].Result.State != ProvenanceVerified {
+		t.Errorf("state = %q, want %q", records[0].Result.State, ProvenanceVerified)
 	}
 }
 

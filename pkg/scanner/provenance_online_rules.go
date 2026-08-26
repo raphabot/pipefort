@@ -52,8 +52,17 @@ const (
 	// cryptographic verification (signature, certificate chain, transparency
 	// log inclusion, or subject-digest mismatch).
 	ProvenanceUnverifiable ProvenanceState = "unverifiable"
-	// ProvenanceVerified means the attestation verified end to end.
+	// ProvenanceVerified means the attestation verified end to end AND names
+	// this repository as its source.
 	ProvenanceVerified ProvenanceState = "verified"
+	// ProvenanceForeignSigner means the attestation is cryptographically sound
+	// but was signed for a different source repository — or names none at all.
+	//
+	// This is a distinct state rather than a flavour of "verified" because
+	// every consumer downstream reads the state and nothing else. Reporting a
+	// foreign signer as verified would render the one case this whole pass
+	// exists to catch as a pass.
+	ProvenanceForeignSigner ProvenanceState = "identity-mismatch"
 )
 
 // ProvenanceResult is what a verifier reports for one artifact. The identity
@@ -128,6 +137,16 @@ func AuditReleaseProvenance(ctx context.Context, owner, repo string, v Provenanc
 		if err != nil {
 			continue
 		}
+
+		// Verified, but by whom? A certificate naming a source repository
+		// other than this one is the SolarWinds shape: a real signature from a
+		// builder that has no business producing this artifact. The verdict is
+		// downgraded rather than merely annotated, because the state is what
+		// every consumer stores, rolls up and renders.
+		if res.State == ProvenanceVerified && !signedBySource(res, expectedSource) {
+			res.State = ProvenanceForeignSigner
+		}
+
 		records = append(records, ProvenanceRecord{Artifact: a, Result: res})
 
 		switch res.State {
@@ -135,17 +154,23 @@ func AuditReleaseProvenance(ctx context.Context, owner, repo string, v Provenanc
 			findings = append(findings, attestationMissingFinding(a))
 		case ProvenanceUnverifiable:
 			findings = append(findings, attestationUnverifiableFinding(a, res))
-		case ProvenanceVerified:
-			// Verified, but by whom? A certificate naming a source repository
-			// other than this one is the SolarWinds shape: a real signature
-			// from a builder that has no business producing this artifact.
-			if res.SourceRepoURI != "" && !strings.EqualFold(res.SourceRepoURI, expectedSource) {
-				findings = append(findings, attestationIdentityFinding(a, res, expectedSource))
-			}
+		case ProvenanceForeignSigner:
+			findings = append(findings, attestationIdentityFinding(a, res, expectedSource))
 		}
 	}
 
 	return StampConfidence(findings), records
+}
+
+// signedBySource reports whether a verified attestation names the repository
+// being scanned as its source.
+//
+// A certificate carrying NO Source Repository URI fails this too. Reading a
+// missing extension as a pass would be fail-open on precisely the field that
+// decides whether a signature means anything, and the identity policy only
+// admits GitHub Actions certificates, which always carry it.
+func signedBySource(res ProvenanceResult, expectedSource string) bool {
+	return res.SourceRepoURI != "" && strings.EqualFold(res.SourceRepoURI, expectedSource)
 }
 
 // signerSuffix renders the signing identity for finding text, when known.
@@ -192,6 +217,10 @@ func attestationUnverifiableFinding(a ReleaseArtifact, res ProvenanceResult) Fin
 }
 
 func attestationIdentityFinding(a ReleaseArtifact, res ProvenanceResult, expectedSource string) Finding {
+	named := res.SourceRepoURI
+	if named == "" {
+		named = "no source repository at all"
+	}
 	return Finding{
 		File:     SettingsFile,
 		Severity: SeverityMedium,
@@ -199,9 +228,9 @@ func attestationIdentityFinding(a ReleaseArtifact, res ProvenanceResult, expecte
 		RuleID:   RuleSLSAAttestationIdentity,
 		Title:    "Build provenance is signed by an unexpected workflow identity",
 		Description: fmt.Sprintf(
-			"Release %s publishes %q with a valid attestation, but the certificate names source repository %s rather than %s.%s "+
+			"Release %s publishes %q with a cryptographically valid attestation, but the certificate names %s rather than %s.%s "+
 				"A correctly signed artifact from the wrong builder is the signature every build-infrastructure compromise leaves behind.",
-			a.ReleaseTag, a.AssetName, res.SourceRepoURI, expectedSource, signerSuffix(res)),
+			a.ReleaseTag, a.AssetName, named, expectedSource, signerSuffix(res)),
 		Recommendation: "Confirm the release was built by this repository's own workflow. If the identity is a deliberate part of your release path (a shared builder repo, say), document it; otherwise treat the artifact as untrusted and rotate the signing path.",
 	}
 }
