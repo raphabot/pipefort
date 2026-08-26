@@ -93,6 +93,14 @@ const (
 	RuleSLSACachePoisoning     RuleID = "slsa-build-l3-cache-poisoning"
 	RuleSLSAVerifyStep         RuleID = "slsa-build-l2-verify-step"
 
+	// Online release-provenance audits (provenance_online_rules.go). Opt-in like
+	// the pinned-action audits: emitted only by AuditReleaseProvenance, never by
+	// the offline ScanBytes pass. These check what a release *actually carries*,
+	// where the rules above only check what a workflow *declares*.
+	RuleSLSAAttestationMissing      RuleID = "slsa-build-l2-attestation-missing"
+	RuleSLSAAttestationUnverifiable RuleID = "slsa-build-l2-attestation-unverifiable"
+	RuleSLSAAttestationIdentity     RuleID = "slsa-build-l3-attestation-identity"
+
 	// GitLab CI workflow checks (gitlab_rules.go) -----------------------------
 	// One rule per OWASP CI/CD Top 10 risk that has a portable GitLab analog.
 	// IDs follow the `cicd-sec-N-gl-*` convention so the GitHub IDs stay
@@ -666,6 +674,41 @@ func ruleCatalog() []RuleSpec {
 			Description:     "Workflows that download artifacts or pull container images should verify provenance (gh attestation verify / slsa-verifier / cosign verify-attestation) before using them — otherwise the consumer side of SLSA v1.2 Build L2 is missing.",
 			DocURL:          "/rules/slsa-build-l2-verify-step",
 			Frameworks:      []string{FrameworkSLSABuildL2},
+		},
+
+		// --- Online release-provenance audits ----------------------------
+		{
+			ID:              RuleSLSAAttestationMissing,
+			Category:        "SLSA-BUILD-L2",
+			Title:           "Release asset has no build provenance attestation",
+			DefaultSeverity: SeverityHigh,
+			Surface:         SurfaceRepoSettings,
+			Platform:        PlatformGitHub,
+			Description:     "An asset of the repository's latest release has no attestation registered for its digest. SLSA v1.2 Build L2 requires published artifacts to ship signed provenance — without it, a substituted file is indistinguishable from a legitimate one.",
+			DocURL:          "/rules/slsa-build-l2-attestation-missing",
+			Frameworks:      []string{FrameworkSLSABuildL2},
+		},
+		{
+			ID:              RuleSLSAAttestationUnverifiable,
+			Category:        "SLSA-BUILD-L2",
+			Title:           "Build provenance attestation does not verify",
+			DefaultSeverity: SeverityHigh,
+			Surface:         SurfaceRepoSettings,
+			Platform:        PlatformGitHub,
+			Description:     "An attestation exists for a release asset but fails cryptographic verification — signature, certificate chain, transparency-log inclusion, or subject digest. An attestation that cannot be verified is weaker than none, because it reads as coverage.",
+			DocURL:          "/rules/slsa-build-l2-attestation-unverifiable",
+			Frameworks:      []string{FrameworkSLSABuildL2},
+		},
+		{
+			ID:              RuleSLSAAttestationIdentity,
+			Category:        "SLSA-BUILD-L3",
+			Title:           "Build provenance is signed by an unexpected workflow identity",
+			DefaultSeverity: SeverityMedium,
+			Surface:         SurfaceRepoSettings,
+			Platform:        PlatformGitHub,
+			Description:     "A release asset's attestation verifies, but the signing certificate names a source repository other than this one. A correctly signed artifact from a builder you did not expect is the mark every build-infrastructure compromise leaves behind.",
+			DocURL:          "/rules/slsa-build-l3-attestation-identity",
+			Frameworks:      []string{FrameworkSLSABuildL3},
 		},
 
 		// --- GitLab CI workflow checks -----------------------------------

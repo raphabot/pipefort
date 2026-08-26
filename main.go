@@ -35,6 +35,7 @@ var (
 	fixMR          bool
 	dryRun         bool
 	auditPins      bool
+	verifyAttests  bool
 	offline        bool
 	githubToken    string
 	gitlabToken    string
@@ -69,6 +70,7 @@ the OWASP Top 10 CI/CD Security Risks.`,
 	rootCmd.Flags().BoolVar(&fixMR, "fix-mr", false, "Open Merge Requests on GitLab for each auto-fixable workflow finding. Requires --git pointing at GitLab and --gitlab-token with `api` scope. Pair with --dry-run to preview.")
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview mutations without writing. Applies to --fix-settings and --fix-mr.")
 	rootCmd.Flags().BoolVar(&auditPins, "audit-pins", false, "Force online supply-chain audits of pinned actions (known-vulnerable, impostor-commit, ref/version-mismatch, typosquat) even without a token, accepting GitHub's 60-requests/hour anonymous limit. These audits already run automatically when a GitHub token is available; use --offline to disable them.")
+	rootCmd.Flags().BoolVar(&verifyAttests, "verify-attestations", false, "Verify the build provenance attestations on the latest release's assets against Sigstore (requires --git and a GitHub token). Checks that published artifacts are actually signed by the expected workflow, not merely that a workflow claims to attest them.")
 	rootCmd.Flags().BoolVar(&offline, "offline", false, "Disable every network-backed audit: online pin audits and repository-settings checks. Only `git clone` traffic remains for --git targets.")
 	rootCmd.Flags().StringVar(&githubToken, "github-token", "", "GitHub token (PAT or `gh auth token` output) used by --git to also audit repository settings. Falls back to $GITHUB_TOKEN.")
 	rootCmd.Flags().StringVar(&gitlabToken, "gitlab-token", "", "GitLab token (PAT with `api` scope or `glab auth token` output) used by --git for GitLab targets. Falls back to $GITLAB_TOKEN.")
@@ -285,6 +287,31 @@ func runScan(cmd *cobra.Command, args []string) error {
 			if msg := onlineAuditHint(offline, auditPins, explicitGitHubToken(), resolveGitHubToken(), true); msg != "" {
 				fmt.Fprintln(os.Stderr, msg)
 			}
+		}
+	}
+
+	// 2f. Online release-provenance verification. Opt-in via
+	// --verify-attestations: it needs a remote repository to ask about, a
+	// token, and Sigstore trust roots over the network. Where the SLSA
+	// workflow rules ask whether a workflow *declares* provenance, this asks
+	// whether the published artifacts actually carry a verifiable one.
+	if verifyAttests {
+		switch {
+		case offline:
+			fmt.Fprintln(os.Stderr, "Warning: --verify-attestations needs network access and is disabled by --offline.")
+		case gitRepo == "" || target.Provider != "github":
+			fmt.Fprintln(os.Stderr, "Warning: --verify-attestations needs a GitHub --git target; skipping.")
+		default:
+			token := resolveGitHubToken()
+			if token == "" {
+				fmt.Fprintln(os.Stderr, "Info: --verify-attestations running unauthenticated — pass --github-token (or set $GITHUB_TOKEN) to avoid GitHub's anonymous rate limit.")
+			}
+			verifier := scanner.NewGitHubProvenanceVerifier(token)
+			provFindings, records := scanner.AuditReleaseProvenance(context.Background(), target.Owner, target.Name, verifier)
+			if len(records) == 0 {
+				fmt.Fprintf(os.Stderr, "Info: %s/%s publishes no release assets to verify.\n", target.Owner, target.Name)
+			}
+			findings = append(findings, provFindings...)
 		}
 	}
 
