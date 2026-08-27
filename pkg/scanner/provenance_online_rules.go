@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -125,7 +126,6 @@ func AuditReleaseProvenance(ctx context.Context, owner, repo string, v Provenanc
 
 	expectedSource := "https://github.com/" + owner + "/" + repo
 
-	var findings []Finding
 	records := make([]ProvenanceRecord, 0, len(artifacts))
 
 	for _, a := range artifacts {
@@ -148,18 +148,57 @@ func AuditReleaseProvenance(ctx context.Context, owner, repo string, v Provenanc
 		}
 
 		records = append(records, ProvenanceRecord{Artifact: a, Result: res})
+	}
 
-		switch res.State {
+	return StampConfidence(provenanceFindings(records, expectedSource)), records
+}
+
+// provenanceFindings reduces per-asset evidence to at most one finding per rule.
+//
+// One finding per ASSET would be both noisy — a release with twenty binaries
+// yields twenty identical HIGH rows, distorting the severity rollup — and,
+// worse, unstable: fingerprints hash the description, so naming the release tag
+// and digest would mint brand-new fingerprints on every release. Triage
+// decisions would never carry over and the alerts feed would re-announce an
+// unchanged condition forever.
+//
+// So the descriptions here are deliberately free of release tags, digests,
+// asset names and counts. The per-asset detail lives in the returned records,
+// which is what the evidence table stores and the CLI prints.
+func provenanceFindings(records []ProvenanceRecord, expectedSource string) []Finding {
+	var missing, unverifiable bool
+	foreignSources := map[string]bool{}
+	for _, r := range records {
+		switch r.Result.State {
 		case ProvenanceMissing:
-			findings = append(findings, attestationMissingFinding(a))
+			missing = true
 		case ProvenanceUnverifiable:
-			findings = append(findings, attestationUnverifiableFinding(a, res))
+			unverifiable = true
 		case ProvenanceForeignSigner:
-			findings = append(findings, attestationIdentityFinding(a, res, expectedSource))
+			named := r.Result.SourceRepoURI
+			if named == "" {
+				named = "no source repository at all"
+			}
+			foreignSources[named] = true
 		}
 	}
 
-	return StampConfidence(findings), records
+	var findings []Finding
+	if missing {
+		findings = append(findings, attestationMissingFinding())
+	}
+	if unverifiable {
+		findings = append(findings, attestationUnverifiableFinding())
+	}
+	if len(foreignSources) > 0 {
+		named := make([]string, 0, len(foreignSources))
+		for k := range foreignSources {
+			named = append(named, k)
+		}
+		sort.Strings(named)
+		findings = append(findings, attestationIdentityFinding(named, expectedSource))
+	}
+	return findings
 }
 
 // signedBySource reports whether a verified attestation names the repository
@@ -173,54 +212,34 @@ func signedBySource(res ProvenanceResult, expectedSource string) bool {
 	return res.SourceRepoURI != "" && strings.EqualFold(res.SourceRepoURI, expectedSource)
 }
 
-// signerSuffix renders the signing identity for finding text, when known.
-func signerSuffix(res ProvenanceResult) string {
-	if res.SignerWorkflow == "" {
-		return ""
-	}
-	return fmt.Sprintf(" The signing certificate names %s.", res.SignerWorkflow)
-}
-
-func attestationMissingFinding(a ReleaseArtifact) Finding {
+func attestationMissingFinding() Finding {
 	return Finding{
 		File:     SettingsFile,
 		Severity: SeverityHigh,
 		Category: "SLSA-BUILD-L2",
 		RuleID:   RuleSLSAAttestationMissing,
-		Title:    "Release asset has no build provenance attestation",
-		Description: fmt.Sprintf(
-			"Release %s publishes %q (%s), but GitHub holds no attestation for that digest. "+
-				"Consumers have no way to tell whether the file was produced by your build or substituted afterwards — "+
-				"exactly the gap SolarWinds, CCleaner and ShadowHammer exploited.",
-			a.ReleaseTag, a.AssetName, a.Digest),
+		Title:    "Release assets have no build provenance attestation",
+		Description: "This repository's latest release publishes assets that carry no build provenance attestation. " +
+			"Consumers have no way to tell whether those files were produced by your build or substituted afterwards — " +
+			"exactly the gap SolarWinds, CCleaner and ShadowHammer exploited.",
 		Recommendation: "Generate provenance in the release workflow with actions/attest-build-provenance (or the slsa-github-generator reusable workflow) so every published asset carries a signed, verifiable attestation.",
 	}
 }
 
-func attestationUnverifiableFinding(a ReleaseArtifact, res ProvenanceResult) Finding {
-	reason := res.Reason
-	if reason == "" {
-		reason = "verification failed"
-	}
+func attestationUnverifiableFinding() Finding {
 	return Finding{
 		File:     SettingsFile,
 		Severity: SeverityHigh,
 		Category: "SLSA-BUILD-L2",
 		RuleID:   RuleSLSAAttestationUnverifiable,
 		Title:    "Build provenance attestation does not verify",
-		Description: fmt.Sprintf(
-			"Release %s publishes %q (%s) with an attestation that fails verification: %s.%s "+
-				"An attestation that cannot be verified provides no assurance at all — it is weaker than none, because it looks like coverage.",
-			a.ReleaseTag, a.AssetName, a.Digest, reason, signerSuffix(res)),
+		Description: "This repository's latest release publishes assets whose build provenance attestation fails verification. " +
+			"An attestation that cannot be verified provides no assurance at all — it is weaker than none, because it looks like coverage.",
 		Recommendation: "Re-run the release with a working attestation step and confirm locally with `gh attestation verify <file> --repo <owner>/<repo>`. If verification fails against a release you did publish, treat the signing path as compromised until proven otherwise.",
 	}
 }
 
-func attestationIdentityFinding(a ReleaseArtifact, res ProvenanceResult, expectedSource string) Finding {
-	named := res.SourceRepoURI
-	if named == "" {
-		named = "no source repository at all"
-	}
+func attestationIdentityFinding(namedSources []string, expectedSource string) Finding {
 	return Finding{
 		File:     SettingsFile,
 		Severity: SeverityMedium,
@@ -228,9 +247,9 @@ func attestationIdentityFinding(a ReleaseArtifact, res ProvenanceResult, expecte
 		RuleID:   RuleSLSAAttestationIdentity,
 		Title:    "Build provenance is signed by an unexpected workflow identity",
 		Description: fmt.Sprintf(
-			"Release %s publishes %q with a cryptographically valid attestation, but the certificate names %s rather than %s.%s "+
+			"This repository's latest release publishes assets whose provenance is cryptographically valid but names %s rather than %s. "+
 				"A correctly signed artifact from the wrong builder is the signature every build-infrastructure compromise leaves behind.",
-			a.ReleaseTag, a.AssetName, named, expectedSource, signerSuffix(res)),
+			strings.Join(namedSources, ", "), expectedSource),
 		Recommendation: "Confirm the release was built by this repository's own workflow. If the identity is a deliberate part of your release path (a shared builder repo, say), document it; otherwise treat the artifact as untrusted and rotate the signing path.",
 	}
 }

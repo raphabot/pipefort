@@ -97,18 +97,17 @@ func TestAuditReleaseProvenanceUnverifiable(t *testing.T) {
 			},
 		},
 	}
-	findings, _ := auditProvenance(v)
+	findings, records := auditProvenance(v)
 	if !hasRule(findings, RuleSLSAAttestationUnverifiable) {
 		t.Fatalf("want %s, got %+v", RuleSLSAAttestationUnverifiable, findings)
 	}
 	// The reason and the signer belong in the text — Finding has nowhere else
 	// to put them.
-	desc := findings[0].Description
-	if !strings.Contains(desc, "transparency log inclusion proof failed") {
-		t.Errorf("description should carry the failure reason, got %q", desc)
-	}
-	if !strings.Contains(desc, "release.yml") {
-		t.Errorf("description should name the signing workflow, got %q", desc)
+	// The reason and the signer belong in the EVIDENCE, not the description:
+	// a description naming them would embed per-release values and mint a new
+	// fingerprint every release. See TestProvenanceFingerprintsSurviveARelease.
+	if len(records) != 1 || records[0].Result.Reason == "" || records[0].Result.SignerWorkflow == "" {
+		t.Errorf("evidence must carry the reason and signer, got %+v", records)
 	}
 }
 
@@ -212,6 +211,62 @@ func TestAuditReleaseProvenancePerArtifactErrorIsSwallowed(t *testing.T) {
 	}
 	if len(records) != 1 {
 		t.Errorf("an errored artifact must not be recorded as evidence, got %+v", records)
+	}
+}
+
+// One finding per rule, not per asset. A release with twenty binaries used to
+// yield twenty identical HIGH rows, which both swamps the triage queue and
+// distorts the severity rollup a repository is judged by.
+func TestAuditReleaseProvenanceCollapsesPerRule(t *testing.T) {
+	arts := []ReleaseArtifact{}
+	results := map[string]ProvenanceResult{}
+	for i := 0; i < 8; i++ {
+		name := fmt.Sprintf("asset-%d", i)
+		arts = append(arts, asset(name))
+		results[name] = ProvenanceResult{State: ProvenanceMissing}
+	}
+	// One asset fails a different way, so a second rule is genuinely due.
+	results["asset-0"] = ProvenanceResult{State: ProvenanceUnverifiable, Reason: "bad signature"}
+
+	findings, records := auditProvenance(&fakeVerifier{artifacts: arts, results: results})
+	if len(findings) != 2 {
+		t.Fatalf("want one finding per rule (2), got %d: %+v", len(findings), findings)
+	}
+	if !hasRule(findings, RuleSLSAAttestationMissing) || !hasRule(findings, RuleSLSAAttestationUnverifiable) {
+		t.Errorf("both rules should fire once, got %+v", findings)
+	}
+	// Every asset is still accounted for in the evidence.
+	if len(records) != 8 {
+		t.Errorf("want 8 evidence rows, got %d", len(records))
+	}
+}
+
+// Fingerprints hash the description (fingerprint.go). A description naming the
+// release tag, the asset or its digest therefore mints a brand-new identity on
+// every release: triage decisions would never carry over, and the alerts feed
+// would re-announce an unchanged condition forever.
+func TestProvenanceFingerprintsSurviveARelease(t *testing.T) {
+	release := func(tag, digest string) []Finding {
+		name := "widget-" + tag + ".tar.gz"
+		v := &fakeVerifier{
+			artifacts: []ReleaseArtifact{{
+				Owner: "acme", Repo: "widget", ReleaseTag: tag, AssetName: name, Digest: digest,
+			}},
+			results: map[string]ProvenanceResult{name: {State: ProvenanceMissing}},
+		}
+		f, _ := AuditReleaseProvenance(context.Background(), "acme", "widget", v)
+		AssignFingerprints(f)
+		return f
+	}
+
+	first := release("v1.0.0", "sha256:aaa")
+	second := release("v1.1.0", "sha256:bbb")
+	if len(first) != 1 || len(second) != 1 {
+		t.Fatalf("want one finding per release, got %d and %d", len(first), len(second))
+	}
+	if first[0].Fingerprint != second[0].Fingerprint {
+		t.Errorf("fingerprint changed across releases (%s vs %s) — triage would not persist",
+			first[0].Fingerprint, second[0].Fingerprint)
 	}
 }
 

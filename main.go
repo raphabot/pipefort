@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -310,6 +311,11 @@ func runScan(cmd *cobra.Command, args []string) error {
 			provFindings, records := scanner.AuditReleaseProvenance(context.Background(), target.Owner, target.Name, verifier)
 			if len(records) == 0 {
 				fmt.Fprintf(os.Stderr, "Info: %s/%s publishes no release assets to verify.\n", target.Owner, target.Name)
+			} else {
+				// The findings deliberately carry no per-asset detail — their
+				// fingerprints have to survive the next release — so print the
+				// evidence here, which is the only place a CLI user can see it.
+				printProvenanceEvidence(records)
 			}
 			findings = append(findings, provFindings...)
 		}
@@ -937,4 +943,34 @@ func shouldFail(findings []scanner.Finding, threshold string) bool {
 	}
 
 	return false
+}
+
+// printProvenanceEvidence writes the per-asset verification result, worst first.
+// The SaaS keeps this in a table; on the command line it is this or nothing.
+func printProvenanceEvidence(records []scanner.ProvenanceRecord) {
+	rank := map[scanner.ProvenanceState]int{
+		scanner.ProvenanceForeignSigner: 0,
+		scanner.ProvenanceUnverifiable:  1,
+		scanner.ProvenanceMissing:       2,
+		scanner.ProvenanceVerified:      3,
+	}
+	sorted := append([]scanner.ProvenanceRecord(nil), records...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if rank[sorted[i].Result.State] != rank[sorted[j].Result.State] {
+			return rank[sorted[i].Result.State] < rank[sorted[j].Result.State]
+		}
+		return sorted[i].Artifact.AssetName < sorted[j].Artifact.AssetName
+	})
+
+	fmt.Printf("\n--- RELEASE PROVENANCE (%s) ---\n", sorted[0].Artifact.ReleaseTag)
+	for _, r := range sorted {
+		detail := r.Result.SignerWorkflow
+		if r.Result.Reason != "" {
+			detail = r.Result.Reason
+		}
+		if detail != "" {
+			detail = "  " + detail
+		}
+		fmt.Printf("  %-17s %s%s\n", r.Result.State, r.Artifact.AssetName, detail)
+	}
 }
