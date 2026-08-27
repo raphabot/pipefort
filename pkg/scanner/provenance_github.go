@@ -60,12 +60,8 @@ type GitHubProvenanceVerifier struct {
 	// its online pass impossible to intercept from outside this package.
 	BaseURL string
 	// TrustedMaterial, when set, replaces the live Sigstore trust roots. Tests
-	// set it; production leaves it nil and gets the TUF-backed roots below.
+	// set it; production leaves it nil and gets the process-wide roots below.
 	TrustedMaterial root.TrustedMaterial
-
-	trustOnce sync.Once
-	trust     root.TrustedMaterial
-	trustErr  error
 }
 
 // NewGitHubProvenanceVerifier returns a verifier using the public GitHub API.
@@ -167,11 +163,11 @@ type attestationsResponse struct {
 
 // Verify checks one artifact's attestation and reports the verdict.
 func (g *GitHubProvenanceVerifier) Verify(ctx context.Context, a ReleaseArtifact) (ProvenanceResult, error) {
-	raw, err := g.fetchBundle(ctx, a)
+	bundles, err := g.fetchBundles(ctx, a)
 	if err != nil {
 		return ProvenanceResult{}, err
 	}
-	if raw == nil {
+	if len(bundles) == 0 {
 		return ProvenanceResult{State: ProvenanceMissing}, nil
 	}
 
@@ -188,14 +184,6 @@ func (g *GitHubProvenanceVerifier) Verify(ctx context.Context, a ReleaseArtifact
 		return ProvenanceResult{
 			State:  ProvenanceUnverifiable,
 			Reason: fmt.Sprintf("asset digest %q is not valid hex", a.Digest),
-		}, nil
-	}
-
-	var b bundle.Bundle
-	if err := b.UnmarshalJSON(raw); err != nil {
-		return ProvenanceResult{
-			State:  ProvenanceUnverifiable,
-			Reason: fmt.Sprintf("attestation bundle is malformed (%v)", err),
 		}, nil
 	}
 
@@ -218,18 +206,34 @@ func (g *GitHubProvenanceVerifier) Verify(ctx context.Context, a ReleaseArtifact
 	if err != nil {
 		return ProvenanceResult{}, err
 	}
-
-	res, err := v.Verify(&b, verify.NewPolicy(
+	policy := verify.NewPolicy(
 		verify.WithArtifactDigest("sha256", digest),
 		verify.WithCertificateIdentity(certID),
-	))
-	if err != nil {
-		return ProvenanceResult{
-			State:  ProvenanceUnverifiable,
-			Reason: err.Error(),
-		}, nil
+	)
+
+	// Any one bundle verifying is enough; the failure of the last is reported
+	// only when none does.
+	var lastReason string
+	for _, raw := range bundles {
+		var b bundle.Bundle
+		if err := b.UnmarshalJSON(raw); err != nil {
+			lastReason = fmt.Sprintf("attestation bundle is malformed (%v)", err)
+			continue
+		}
+		res, err := v.Verify(&b, policy)
+		if err != nil {
+			lastReason = err.Error()
+			continue
+		}
+		return provenanceResultFrom(res), nil
 	}
 
+	return ProvenanceResult{State: ProvenanceUnverifiable, Reason: lastReason}, nil
+}
+
+// provenanceResultFrom reads the identity off a VERIFIED certificate. Reading
+// it from the bundle's own payload instead would trust the thing under test.
+func provenanceResultFrom(res *verify.VerificationResult) ProvenanceResult {
 	out := ProvenanceResult{State: ProvenanceVerified}
 	if res.Signature != nil && res.Signature.Certificate != nil {
 		cert := res.Signature.Certificate
@@ -245,12 +249,17 @@ func (g *GitHubProvenanceVerifier) Verify(ctx context.Context, a ReleaseArtifact
 	if res.Statement != nil {
 		out.PredicateType = res.Statement.PredicateType
 	}
-	return out, nil
+	return out
 }
 
-// fetchBundle returns the raw attestation bundle JSON for an artifact, or nil
-// when GitHub holds no attestation for that digest.
-func (g *GitHubProvenanceVerifier) fetchBundle(ctx context.Context, a ReleaseArtifact) ([]byte, error) {
+// fetchBundles returns every attestation bundle GitHub holds for an artifact's
+// digest, or nil when it holds none.
+//
+// A digest can carry more than one: a re-run of the release workflow, or a
+// re-tagged release, each add an attestation. Checking only the first would
+// report "does not verify" — a HIGH finding whose text says an unverifiable
+// attestation is worse than none — while a valid one sat behind it.
+func (g *GitHubProvenanceVerifier) fetchBundles(ctx context.Context, a ReleaseArtifact) ([][]byte, error) {
 	path := fmt.Sprintf("/repos/%s/%s/attestations/%s?predicate_type=%s",
 		a.Owner, a.Repo, url.PathEscape(a.Digest), url.QueryEscape(provenancePredicateType))
 
@@ -275,14 +284,23 @@ func (g *GitHubProvenanceVerifier) fetchBundle(ctx context.Context, a ReleaseArt
 		return nil, nil
 	}
 
-	first := out.Attestations[0]
-	if len(first.Bundle) > 0 && string(first.Bundle) != "null" {
-		return first.Bundle, nil
+	var bundles [][]byte
+	for _, at := range out.Attestations {
+		if len(at.Bundle) > 0 && string(at.Bundle) != "null" {
+			bundles = append(bundles, at.Bundle)
+			continue
+		}
+		if at.BundleURL == "" {
+			continue
+		}
+		raw, err := g.fetchBundleURL(ctx, at.BundleURL)
+		if err != nil {
+			// One unreachable bundle must not hide a sibling that verifies.
+			continue
+		}
+		bundles = append(bundles, raw)
 	}
-	if first.BundleURL == "" {
-		return nil, nil
-	}
-	return g.fetchBundleURL(ctx, first.BundleURL)
+	return bundles, nil
 }
 
 // fetchBundleURL retrieves a bundle served indirectly via bundle_url.
@@ -353,7 +371,19 @@ func looksLikeJSON(body []byte) bool {
 	return false
 }
 
-// trustedMaterial resolves the Sigstore trust roots once per verifier.
+// Trust roots are resolved once per PROCESS, not once per verifier.
+//
+// Each resolution walks two TUF repositories over the network and writes their
+// metadata into a cache directory. A verifier is built per request, so
+// per-verifier resolution meant every request paid for both walks — and
+// concurrent requests wrote the same cache directory at the same time.
+var (
+	trustOnce sync.Once
+	trustRoot root.TrustedMaterial
+	trustErr  error
+)
+
+// trustedMaterial resolves the Sigstore trust roots.
 //
 // Both instances are trusted together: Sigstore's public-good instance signs
 // attestations for public repositories, GitHub's own instance signs them for
@@ -363,12 +393,12 @@ func (g *GitHubProvenanceVerifier) trustedMaterial() (root.TrustedMaterial, erro
 	if g.TrustedMaterial != nil {
 		return g.TrustedMaterial, nil
 	}
-	g.trustOnce.Do(func() {
+	trustOnce.Do(func() {
 		var collection root.TrustedMaterialCollection
 
 		publicGood, err := root.NewLiveTrustedRoot(tufOptions(tuf.DefaultOptions(), "sigstore"))
 		if err != nil {
-			g.trustErr = fmt.Errorf("sigstore public-good trust root: %w", err)
+			trustErr = fmt.Errorf("sigstore public-good trust root: %w", err)
 			return
 		}
 		collection = append(collection, publicGood)
@@ -383,9 +413,9 @@ func (g *GitHubProvenanceVerifier) trustedMaterial() (root.TrustedMaterial, erro
 		// the overwhelming majority, still verify. Private-repo ones will
 		// report as unverifiable, which is honest.
 
-		g.trust = collection
+		trustRoot = collection
 	})
-	return g.trust, g.trustErr
+	return trustRoot, trustErr
 }
 
 // tufOptions points the TUF cache at a writable temp directory. The default is

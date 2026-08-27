@@ -56,6 +56,11 @@ const (
 	// ProvenanceVerified means the attestation verified end to end AND names
 	// this repository as its source.
 	ProvenanceVerified ProvenanceState = "verified"
+	// ProvenanceSkipped means the artifact could not be checked at all — no
+	// digest to look it up by, or the lookup failed. Recorded rather than
+	// dropped: an artifact missing from the evidence is indistinguishable from
+	// one that passed, and "we did not look" must never read as "it is fine".
+	ProvenanceSkipped ProvenanceState = "skipped"
 	// ProvenanceForeignSigner means the attestation is cryptographically sound
 	// but was signed for a different source repository — or names none at all.
 	//
@@ -115,26 +120,53 @@ type ProvenanceVerifier interface {
 //
 // Lookup errors are swallowed per-artifact, matching AuditActionPins — a
 // transient failure yields no finding rather than a false positive.
-func AuditReleaseProvenance(ctx context.Context, owner, repo string, v ProvenanceVerifier) ([]Finding, []ProvenanceRecord) {
+func AuditReleaseProvenance(ctx context.Context, owner, repo string, v ProvenanceVerifier) ([]Finding, []ProvenanceRecord, error) {
 	artifacts, err := v.LatestReleaseArtifacts(ctx, owner, repo)
-	if err != nil || len(artifacts) == 0 {
-		return nil, nil
+	if err != nil {
+		// Returned, not swallowed. The common cause is a missing
+		// `attestations: read` permission, and reporting that as "this release
+		// has no attestations" would be a false accusation dressed as a
+		// finding.
+		return nil, nil, err
 	}
+	if len(artifacts) == 0 {
+		return nil, nil, nil
+	}
+	// Truncation is recorded, not silent: a 50-asset release must not report
+	// "every published asset verifies" on the strength of the first twenty.
+	var truncated []ReleaseArtifact
 	if len(artifacts) > MaxProvenanceArtifacts {
+		truncated = artifacts[MaxProvenanceArtifacts:]
 		artifacts = artifacts[:MaxProvenanceArtifacts]
 	}
 
 	expectedSource := "https://github.com/" + owner + "/" + repo
 
-	records := make([]ProvenanceRecord, 0, len(artifacts))
+	records := make([]ProvenanceRecord, 0, len(artifacts)+len(truncated))
+
+	for _, a := range truncated {
+		records = append(records, ProvenanceRecord{
+			Artifact: a,
+			Result:   ProvenanceResult{State: ProvenanceSkipped, Reason: "not checked: per-release asset cap reached"},
+		})
+	}
 
 	for _, a := range artifacts {
-		// An asset GitHub has not digested cannot be looked up by subject.
+		// GitHub has only published digests for assets uploaded since June
+		// 2025; an older one cannot be looked up by subject at all.
 		if a.Digest == "" {
+			records = append(records, ProvenanceRecord{
+				Artifact: a,
+				Result:   ProvenanceResult{State: ProvenanceSkipped, Reason: "GitHub publishes no digest for this asset"},
+			})
 			continue
 		}
 		res, err := v.Verify(ctx, a)
 		if err != nil {
+			records = append(records, ProvenanceRecord{
+				Artifact: a,
+				Result:   ProvenanceResult{State: ProvenanceSkipped, Reason: err.Error()},
+			})
 			continue
 		}
 
@@ -150,7 +182,7 @@ func AuditReleaseProvenance(ctx context.Context, owner, repo string, v Provenanc
 		records = append(records, ProvenanceRecord{Artifact: a, Result: res})
 	}
 
-	return StampConfidence(provenanceFindings(records, expectedSource)), records
+	return StampConfidence(provenanceFindings(records, expectedSource)), records, nil
 }
 
 // provenanceFindings reduces per-asset evidence to at most one finding per rule.

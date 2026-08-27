@@ -308,10 +308,16 @@ func runScan(cmd *cobra.Command, args []string) error {
 				fmt.Fprintln(os.Stderr, "Info: --verify-attestations running unauthenticated — pass --github-token (or set $GITHUB_TOKEN) to avoid GitHub's anonymous rate limit.")
 			}
 			verifier := scanner.NewGitHubProvenanceVerifier(token)
-			provFindings, records := scanner.AuditReleaseProvenance(context.Background(), target.Owner, target.Name, verifier)
-			if len(records) == 0 {
+			provFindings, records, provErr := scanner.AuditReleaseProvenance(context.Background(), target.Owner, target.Name, verifier)
+			switch {
+			case provErr != nil:
+				// Usually a token without `attestations: read`. Saying
+				// "no release assets" here would report a permission problem
+				// as a clean result.
+				fmt.Fprintf(os.Stderr, "Warning: could not verify attestations for %s/%s: %v\n", target.Owner, target.Name, provErr)
+			case len(records) == 0:
 				fmt.Fprintf(os.Stderr, "Info: %s/%s publishes no release assets to verify.\n", target.Owner, target.Name)
-			} else {
+			default:
 				// The findings deliberately carry no per-asset detail — their
 				// fingerprints have to survive the next release — so print the
 				// evidence here, which is the only place a CLI user can see it.
@@ -952,7 +958,8 @@ func printProvenanceEvidence(records []scanner.ProvenanceRecord) {
 		scanner.ProvenanceForeignSigner: 0,
 		scanner.ProvenanceUnverifiable:  1,
 		scanner.ProvenanceMissing:       2,
-		scanner.ProvenanceVerified:      3,
+		scanner.ProvenanceSkipped:       3,
+		scanner.ProvenanceVerified:      4,
 	}
 	sorted := append([]scanner.ProvenanceRecord(nil), records...)
 	sort.SliceStable(sorted, func(i, j int) bool {

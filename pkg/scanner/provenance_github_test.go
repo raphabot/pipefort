@@ -248,7 +248,10 @@ func TestVerifyLive(t *testing.T) {
 	}
 
 	v := NewGitHubProvenanceVerifier(os.Getenv("GITHUB_TOKEN"))
-	findings, records := AuditReleaseProvenance(context.Background(), owner, repo, v)
+	findings, records, err := AuditReleaseProvenance(context.Background(), owner, repo, v)
+	if err != nil {
+		t.Fatalf("AuditReleaseProvenance: %v", err)
+	}
 	if len(records) == 0 {
 		t.Fatalf("no artifacts verified for %s — check the repo publishes release assets", target)
 	}

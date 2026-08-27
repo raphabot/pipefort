@@ -48,7 +48,8 @@ func asset(name string) ReleaseArtifact {
 }
 
 func auditProvenance(v ProvenanceVerifier) ([]Finding, []ProvenanceRecord) {
-	return AuditReleaseProvenance(context.Background(), "acme", "widget", v)
+	findings, records, _ := AuditReleaseProvenance(context.Background(), "acme", "widget", v)
+	return findings, records
 }
 
 func TestAuditReleaseProvenanceNoReleaseIsSilent(t *testing.T) {
@@ -63,7 +64,7 @@ func TestAuditReleaseProvenanceNoReleaseIsSilent(t *testing.T) {
 	}
 }
 
-func TestAuditReleaseProvenanceListErrorIsSilent(t *testing.T) {
+func TestAuditReleaseProvenanceListErrorProducesNoFindings(t *testing.T) {
 	findings, _ := auditProvenance(&fakeVerifier{listErr: errors.New("503")})
 	if len(findings) != 0 {
 		t.Errorf("a transport failure must not produce findings, got %+v", findings)
@@ -209,8 +210,13 @@ func TestAuditReleaseProvenancePerArtifactErrorIsSwallowed(t *testing.T) {
 	if len(findings) != 1 || findings[0].RuleID != RuleSLSAAttestationMissing {
 		t.Errorf("a per-artifact error must not sink the pass, got %+v", findings)
 	}
-	if len(records) != 1 {
-		t.Errorf("an errored artifact must not be recorded as evidence, got %+v", records)
+	// The errored artifact is RECORDED as skipped, not dropped. An artifact
+	// absent from the evidence is indistinguishable from one that passed.
+	if len(records) != 2 {
+		t.Fatalf("want both artifacts recorded, got %+v", records)
+	}
+	if records[1].Result.State != ProvenanceSkipped || records[1].Result.Reason == "" {
+		t.Errorf("the errored artifact should be skipped-with-reason, got %+v", records[1].Result)
 	}
 }
 
@@ -254,7 +260,7 @@ func TestProvenanceFingerprintsSurviveARelease(t *testing.T) {
 			}},
 			results: map[string]ProvenanceResult{name: {State: ProvenanceMissing}},
 		}
-		f, _ := AuditReleaseProvenance(context.Background(), "acme", "widget", v)
+		f, _, _ := AuditReleaseProvenance(context.Background(), "acme", "widget", v)
 		AssignFingerprints(f)
 		return f
 	}
@@ -275,8 +281,13 @@ func TestAuditReleaseProvenanceSkipsUndigestedAssets(t *testing.T) {
 	a.Digest = ""
 	v := &fakeVerifier{artifacts: []ReleaseArtifact{a}}
 	findings, records := auditProvenance(v)
-	if len(findings) != 0 || len(records) != 0 {
-		t.Errorf("an asset with no digest cannot be looked up; want silence, got %+v / %+v", findings, records)
+	if len(findings) != 0 {
+		t.Errorf("an asset we could not look up is not a finding, got %+v", findings)
+	}
+	// GitHub only publishes digests for assets uploaded since June 2025. An
+	// older release must not silently read as "nothing published to verify".
+	if len(records) != 1 || records[0].Result.State != ProvenanceSkipped {
+		t.Fatalf("want the asset recorded as skipped, got %+v", records)
 	}
 	if v.verifyCalls != 0 {
 		t.Errorf("want no Verify call for an undigested asset, got %d", v.verifyCalls)
@@ -296,8 +307,31 @@ func TestAuditReleaseProvenanceCapsArtifacts(t *testing.T) {
 	if v.verifyCalls != MaxProvenanceArtifacts {
 		t.Errorf("want %d Verify calls, got %d", MaxProvenanceArtifacts, v.verifyCalls)
 	}
-	if len(records) != MaxProvenanceArtifacts {
-		t.Errorf("want %d records, got %d", MaxProvenanceArtifacts, len(records))
+	// The cap bounds the NETWORK calls, not the evidence. Assets past it are
+	// recorded as skipped, so a 35-asset release can never report "every
+	// published asset verifies" on the strength of the first twenty.
+	if len(records) != len(arts) {
+		t.Fatalf("want every asset accounted for (%d), got %d", len(arts), len(records))
+	}
+	var skipped int
+	for _, r := range records {
+		if r.Result.State == ProvenanceSkipped {
+			skipped++
+		}
+	}
+	if skipped != len(arts)-MaxProvenanceArtifacts {
+		t.Errorf("want %d skipped, got %d", len(arts)-MaxProvenanceArtifacts, skipped)
+	}
+}
+
+// A hard failure is returned, never swallowed. The common cause is a token
+// without `attestations: read`, and reporting that as "no attestations" would
+// be a false accusation dressed as a finding.
+func TestAuditReleaseProvenanceReturnsHardFailures(t *testing.T) {
+	_, _, err := AuditReleaseProvenance(context.Background(), "acme", "widget",
+		&fakeVerifier{listErr: errors.New("403 Forbidden")})
+	if err == nil {
+		t.Fatal("want the API error returned, got nil")
 	}
 }
 
