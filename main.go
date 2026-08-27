@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -35,6 +36,7 @@ var (
 	fixMR          bool
 	dryRun         bool
 	auditPins      bool
+	verifyAttests  bool
 	offline        bool
 	githubToken    string
 	gitlabToken    string
@@ -69,6 +71,7 @@ the OWASP Top 10 CI/CD Security Risks.`,
 	rootCmd.Flags().BoolVar(&fixMR, "fix-mr", false, "Open Merge Requests on GitLab for each auto-fixable workflow finding. Requires --git pointing at GitLab and --gitlab-token with `api` scope. Pair with --dry-run to preview.")
 	rootCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Preview mutations without writing. Applies to --fix-settings and --fix-mr.")
 	rootCmd.Flags().BoolVar(&auditPins, "audit-pins", false, "Force online supply-chain audits of pinned actions (known-vulnerable, impostor-commit, ref/version-mismatch, typosquat) even without a token, accepting GitHub's 60-requests/hour anonymous limit. These audits already run automatically when a GitHub token is available; use --offline to disable them.")
+	rootCmd.Flags().BoolVar(&verifyAttests, "verify-attestations", false, "Verify the build provenance attestations on the latest release's assets against Sigstore (requires --git and a GitHub token). Checks that published artifacts are actually signed by the expected workflow, not merely that a workflow claims to attest them.")
 	rootCmd.Flags().BoolVar(&offline, "offline", false, "Disable every network-backed audit: online pin audits and repository-settings checks. Only `git clone` traffic remains for --git targets.")
 	rootCmd.Flags().StringVar(&githubToken, "github-token", "", "GitHub token (PAT or `gh auth token` output) used by --git to also audit repository settings. Falls back to $GITHUB_TOKEN.")
 	rootCmd.Flags().StringVar(&gitlabToken, "gitlab-token", "", "GitLab token (PAT with `api` scope or `glab auth token` output) used by --git for GitLab targets. Falls back to $GITLAB_TOKEN.")
@@ -285,6 +288,42 @@ func runScan(cmd *cobra.Command, args []string) error {
 			if msg := onlineAuditHint(offline, auditPins, explicitGitHubToken(), resolveGitHubToken(), true); msg != "" {
 				fmt.Fprintln(os.Stderr, msg)
 			}
+		}
+	}
+
+	// 2f. Online release-provenance verification. Opt-in via
+	// --verify-attestations: it needs a remote repository to ask about, a
+	// token, and Sigstore trust roots over the network. Where the SLSA
+	// workflow rules ask whether a workflow *declares* provenance, this asks
+	// whether the published artifacts actually carry a verifiable one.
+	if verifyAttests {
+		switch {
+		case offline:
+			fmt.Fprintln(os.Stderr, "Warning: --verify-attestations needs network access and is disabled by --offline.")
+		case gitRepo == "" || target.Provider != "github":
+			fmt.Fprintln(os.Stderr, "Warning: --verify-attestations needs a GitHub --git target; skipping.")
+		default:
+			token := resolveGitHubToken()
+			if token == "" {
+				fmt.Fprintln(os.Stderr, "Info: --verify-attestations running unauthenticated — pass --github-token (or set $GITHUB_TOKEN) to avoid GitHub's anonymous rate limit.")
+			}
+			verifier := scanner.NewGitHubProvenanceVerifier(token)
+			provFindings, records, provErr := scanner.AuditReleaseProvenance(context.Background(), target.Owner, target.Name, verifier)
+			switch {
+			case provErr != nil:
+				// Usually a token without `attestations: read`. Saying
+				// "no release assets" here would report a permission problem
+				// as a clean result.
+				fmt.Fprintf(os.Stderr, "Warning: could not verify attestations for %s/%s: %v\n", target.Owner, target.Name, provErr)
+			case len(records) == 0:
+				fmt.Fprintf(os.Stderr, "Info: %s/%s publishes no release assets to verify.\n", target.Owner, target.Name)
+			default:
+				// The findings deliberately carry no per-asset detail — their
+				// fingerprints have to survive the next release — so print the
+				// evidence here, which is the only place a CLI user can see it.
+				printProvenanceEvidence(records)
+			}
+			findings = append(findings, provFindings...)
 		}
 	}
 
@@ -910,4 +949,35 @@ func shouldFail(findings []scanner.Finding, threshold string) bool {
 	}
 
 	return false
+}
+
+// printProvenanceEvidence writes the per-asset verification result, worst first.
+// The SaaS keeps this in a table; on the command line it is this or nothing.
+func printProvenanceEvidence(records []scanner.ProvenanceRecord) {
+	rank := map[scanner.ProvenanceState]int{
+		scanner.ProvenanceForeignSigner: 0,
+		scanner.ProvenanceUnverifiable:  1,
+		scanner.ProvenanceMissing:       2,
+		scanner.ProvenanceSkipped:       3,
+		scanner.ProvenanceVerified:      4,
+	}
+	sorted := append([]scanner.ProvenanceRecord(nil), records...)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if rank[sorted[i].Result.State] != rank[sorted[j].Result.State] {
+			return rank[sorted[i].Result.State] < rank[sorted[j].Result.State]
+		}
+		return sorted[i].Artifact.AssetName < sorted[j].Artifact.AssetName
+	})
+
+	fmt.Printf("\n--- RELEASE PROVENANCE (%s) ---\n", sorted[0].Artifact.ReleaseTag)
+	for _, r := range sorted {
+		detail := r.Result.SignerWorkflow
+		if r.Result.Reason != "" {
+			detail = r.Result.Reason
+		}
+		if detail != "" {
+			detail = "  " + detail
+		}
+		fmt.Printf("  %-17s %s%s\n", r.Result.State, r.Artifact.AssetName, detail)
+	}
 }
