@@ -15,8 +15,10 @@ import (
 	"github.com/raphabot/pipefort/pkg/scanner"
 )
 
-// Version is stamped into the MCP server's implementation info.
-const Version = "0.1.0"
+// Version is stamped into the MCP server's implementation info. The CLI sets it
+// to the resolved binary version at startup (see main.go); it stays "dev" for
+// embedders that construct the server directly without setting it.
+var Version = "dev"
 
 // NewServer builds the Pipefort MCP server with its tool set registered.
 func NewServer() *mcpsdk.Server {
