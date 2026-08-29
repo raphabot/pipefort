@@ -1,0 +1,64 @@
+# Pipefort
+
+> Pipefort is an offline-first Go CLI and importable Go library that statically analyses
+> CI/CD pipeline configuration — GitHub Actions and GitLab CI workflow YAML, plus the
+> repository/project settings around them — against 74 rules mapped to the OWASP Top 10
+> CI/CD Security Risks and SLSA v1.2. It auto-fixes the mechanically fixable subset,
+> correlates findings into attack chains, emits SARIF 2.1.0 for GitHub code scanning, and
+> ships a Model Context Protocol server so AI assistants can scan workflows as they write
+> them. It is not a SAST, SCA, or git-history secret scanner.
+
+- Project: Pipefort — CI/CD pipeline security scanner
+- Repository: https://github.com/raphabot/pipefort (CLI + scan engine, public)
+- Language: Go (module `github.com/raphabot/pipefort`, requires Go 1.25.0+ to build)
+- License: Apache-2.0
+- Latest release: v0.1.7 · pre-1.0, the library API may change on a minor bump
+- Install (fastest): `curl -fsSL https://pipefort.com/install.sh | sh`
+- First command: `pipefort -p .` — no config, no token, no network required
+
+## Start here
+
+- [AGENTS.md](https://raw.githubusercontent.com/raphabot/pipefort/main/AGENTS.md): The single most complete integration guide — install, hello world, four integration patterns, full CLI and library reference, configuration schema, error table, and when *not* to use Pipefort. Read this first.
+- [README](https://raw.githubusercontent.com/raphabot/pipefort/main/README.md): Short overview, install commands, flag summary, and the GitHub Action snippet.
+- [examples/](https://github.com/raphabot/pipefort/tree/main/examples): Copy-pasteable recipes — GitHub Actions workflows, a GitLab CI job, an annotated `.pipefort.yml`, inline suppressions, MCP registration, and correct Docker invocations.
+
+## Install and quickstart
+
+- [Installation](https://pipefort.com/docs/cli/installation): Install script, Homebrew cask, `go install`, prebuilt archives per OS/arch, and Docker.
+- [Quickstart](https://pipefort.com/docs/quickstart): Scan a repo and read the output in under a minute.
+- [CLI usage](https://pipefort.com/docs/cli/usage): Local, single-file, remote (`--git`), and org-wide (`--org`) scan modes with real output.
+
+## Reference
+
+- [Flags](https://pipefort.com/docs/cli/flags): Every CLI flag with its default and effect.
+- [Configuration](https://pipefort.com/docs/cli/configuration): The `.pipefort.yml` schema — ruleset/persona/min-confidence defaults, per-rule disables and severity overrides, file/line ignores, `forbidden-uses` allow/deny — plus inline `# pipefort: ignore` suppressions.
+- [Rules overview](https://pipefort.com/docs/rules/overview): All 74 rules by surface and platform, with severity, confidence, and auto-fix availability. Individual rules are at `https://pipefort.com/docs/rules/<rule-id>`.
+- [Architecture](https://pipefort.com/docs/architecture): How the scan engine, reporters, VCS clients, and the hosted service fit together.
+
+## Integrate
+
+- [CI integration](https://pipefort.com/docs/cli/ci-integration): The GitHub Action, its inputs and `sarif-file` output, and uploading SARIF to GitHub code scanning (`security-events: write`, `if: always()`).
+- [MCP server](https://pipefort.com/docs/cli/mcp): `pipefort mcp` over stdio — the `scan_workflow`, `scan_directory`, and `explain_rule` tools and their input schemas.
+- [Auto-fix](https://pipefort.com/docs/cli/auto-fix): What `--fix` rewrites in place, and the remote `--fix-mr` / `--fix-settings` remediation paths.
+- [GitLab](https://pipefort.com/docs/cli/gitlab): Scanning `.gitlab-ci.yml`, GitLab project-settings audits, and opening fix MRs.
+- [Editor / VS Code](https://pipefort.com/docs/editor/vscode): Inline findings while editing workflow YAML.
+
+## Go library
+
+- [pkg/scanner](https://pkg.go.dev/github.com/raphabot/pipefort/pkg/scanner): The engine. `ScanBytes(name, content)` scans in memory without cloning; `ScanFile`/`ScanDir` read from disk; then `FilterFindings` → `FilterByPersona` → `FilterByConfidence` → `DetectToxicCombinations`. Also `FixBytes`, the rule catalog, and the `.pipefort.yml` loader.
+- [pkg/reporter](https://pkg.go.dev/github.com/raphabot/pipefort/pkg/reporter): `ReportConsole`, `ReportJSON`, `ReportJSONWithCombos`, `ReportSARIF`, `ReportCombos`.
+- [pkg/mcp](https://pkg.go.dev/github.com/raphabot/pipefort/pkg/mcp): `NewServer()` and `Run(ctx)` — the MCP surface, embeddable in another binary.
+- [pkg/vcs](https://pkg.go.dev/github.com/raphabot/pipefort/pkg/vcs): Token-parameterized GitHub/GitLab clients, org scanning, and the remote workflow/settings fixers. Unstable — shaped for the hosted service.
+
+## Project
+
+- [LICENSE](https://raw.githubusercontent.com/raphabot/pipefort/main/LICENSE): Apache License 2.0.
+- [SECURITY.md](https://raw.githubusercontent.com/raphabot/pipefort/main/SECURITY.md): Vulnerability reporting via GitHub private advisories; engine advisories are published here before the hosted service rolls out.
+- [CONTRIBUTING.md](https://raw.githubusercontent.com/raphabot/pipefort/main/CONTRIBUTING.md): Build/test commands, the "every feature ships with tests" rule, and how to add a scanner rule.
+- [CLAUDE.md](https://raw.githubusercontent.com/raphabot/pipefort/main/CLAUDE.md): Repository conventions for coding agents working *on* this codebase (not on integrating it).
+- [Releases](https://github.com/raphabot/pipefort/releases): Tagged versions and prebuilt binaries for linux/darwin (amd64, arm64) and windows (amd64).
+
+## Optional
+
+- [Comparison](https://pipefort.com/docs/comparison): How Pipefort differs from adjacent tools, and where another tool is the better fit.
+- [Hosted dashboard](https://pipefort.com): The commercial SaaS built on this engine — scan history, trends, org-wide posture, PR checks. The CLI is fully usable without it.

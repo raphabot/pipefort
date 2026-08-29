@@ -46,7 +46,14 @@ All detection lives in `pkg/scanner`. To add a rule:
    `pkg/mcp` if it belongs in the MCP surface.
 5. Add tests.
 
-**Cross-repo docs flow.** User-facing docs live in the separate **private
+**In-repo agent docs.** [`AGENTS.md`](./AGENTS.md) is the consumer-facing
+integration guide (CLI flags, exit codes, the exported `pkg/scanner` surface,
+`.pipefort.yml` schema) and [`llms.txt`](./llms.txt) indexes it. A change to any
+of those surfaces — a new/renamed flag, an output-format change, a new or removed
+exported symbol, a config field — must update `AGENTS.md` in the same PR, and
+`llms.txt` if a link changes. Recipes live in [`examples/`](./examples/).
+
+**Cross-repo docs flow.** User-facing prose docs live in the separate **private
 `pipefort-cloud` repo** (Mintlify), not here. A new rule therefore needs a
 companion PR there that adds a `docs/rules/<id>.mdx` page and an entry in
 `docs/rules/overview.mdx`. Call this out in your PR description so a maintainer

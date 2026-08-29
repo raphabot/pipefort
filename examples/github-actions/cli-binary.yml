@@ -1,0 +1,76 @@
+# Pipefort via the released binary instead of the Docker action.
+#
+# Copy to:      .github/workflows/pipefort.yml
+# Requires:     curl, tar, sha256sum (all present on ubuntu-latest)
+# Env vars:     GITHUB_TOKEN — enables the online supply-chain pin audits and
+#               avoids GitHub's 60-requests/hour anonymous limit
+# Result:       same findings as ./sarif-upload.yml, but the job starts scanning
+#               immediately instead of building a container first
+#
+# The install step downloads the release tarball and verifies it against the
+# release's published checksums.txt, rather than piping a script to a shell.
+# `curl ... | sh` is convenient interactively, but Pipefort's own
+# best-prac-1-pipe-to-shell and cicd-sec-9-download-without-checksum rules flag
+# it in CI — so this example does what those rules ask for.
+
+name: Pipefort (binary)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write
+
+env:
+  PIPEFORT_VERSION: "0.1.7"   # without the leading "v"; see /releases
+
+jobs:
+  pipefort:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pipefort (checksum-verified)
+        run: |
+          set -euo pipefail
+          base="https://github.com/raphabot/pipefort/releases/download/v${PIPEFORT_VERSION}"
+          asset="pipefort_${PIPEFORT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSLO "${base}/${asset}"
+          curl -fsSLO "${base}/checksums.txt"
+          grep " ${asset}\$" checksums.txt | sha256sum -c -
+          tar -xzf "${asset}" pipefort
+          sudo install -m 0755 pipefort /usr/local/bin/pipefort
+          rm -f "${asset}" checksums.txt pipefort
+
+      - name: Show version
+        run: pipefort --version
+
+      # `|| true` keeps the SARIF file available for upload; the gate step below
+      # re-runs the scan for its exit code. Drop the gate to warn only.
+      - name: Scan (SARIF)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pipefort -p . -o sarif > pipefort.sarif || true
+
+      - name: Upload SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: pipefort.sarif
+
+      - name: Gate the build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: pipefort -p . --fail-on MEDIUM
+
+# Hardening note: this file still uses mutable tag refs (actions/checkout@v4,
+# codeql-action/upload-sarif@v3) so it stays readable. Pipefort flags those under
+# cicd-sec-3-unpinned-action. Pin them for real with:
+#
+#     pipefort -p . --fix
+#
+# which rewrites each `uses:` to a full commit SHA with the original tag kept as
+# a trailing comment.
