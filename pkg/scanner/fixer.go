@@ -161,6 +161,12 @@ func fixGitHubBytes(content []byte, findings []Finding) ([]byte, int, error) {
 				}
 			}
 
+		case "CICD-SEC-2": // Inadequate IAM — dispatch on rule.
+			if f.RuleID == RuleCloudStaticCredentials && fixCloudStaticCredentials(rootNode, f) {
+				fixesCount++
+				modified = true
+			}
+
 		case "CICD-SEC-3": // Unpinned Action
 			usesNode := findNodeByPosition(rootNode, f.Line, f.Column)
 			if usesNode != nil && usesNode.Kind == yaml.ScalarNode {

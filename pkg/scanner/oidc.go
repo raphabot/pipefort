@@ -138,7 +138,13 @@ func OIDCUsage(file string, content []byte) []OIDCAuth {
 	if workflow.Jobs.Kind == 0 && workflow.On.Kind == 0 {
 		return nil
 	}
+	return oidcAuthsIn(file, &workflow)
+}
 
+// oidcAuthsIn is OIDCUsage over an already-parsed workflow. The Check*
+// functions receive the parsed tree rather than the raw bytes, and re-parsing
+// there would let the extraction and the rule drift apart on the same file.
+func oidcAuthsIn(file string, workflow *WorkflowNode) []OIDCAuth {
 	workflowGrant := idTokenWrite(&workflow.Permissions)
 
 	var out []OIDCAuth

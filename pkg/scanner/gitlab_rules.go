@@ -67,6 +67,7 @@ func scanGitLabBytes(filePath string, content []byte) ([]Finding, error) {
 	// extract from the GitLab job tree.
 	out = append(out, checkGitLabPipeToShell(filePath, jobs)...)
 	out = append(out, checkGitLabDownloadNoChecksum(filePath, jobs)...)
+	out = append(out, checkGitLabCloudCredentials(filePath, jobs, vars)...)
 
 	return out, nil
 }

@@ -34,6 +34,11 @@ var workflowFixableRules = map[scanner.RuleID]bool{
 	scanner.RuleUnsoundCondition:     true, // CICD-SEC-1 (operator-only residue)
 	scanner.RuleMissingConcurrency:   true, // BEST-PRAC-4
 
+	// Comment-only advisories: the replacement needs an identity that does
+	// not exist in the file, so the fix annotates the line rather than
+	// rewriting it. See fixCloudStaticCredentials.
+	scanner.RuleCloudStaticCredentials: true, // CICD-SEC-2
+
 	// GitLab CI fixers — conservative trio shipped in the parity v1.
 	scanner.RuleGitLabDebugTrace:     true, // CICD-SEC-7 (gl)
 	scanner.RuleGitLabAllowFailure:   true, // CICD-SEC-10 (gl)

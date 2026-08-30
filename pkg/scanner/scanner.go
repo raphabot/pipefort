@@ -80,6 +80,9 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	findings = append(findings, CheckDownloadWithoutChecksum(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckContinueOnErrorJob(filePath, &workflow, jobs)...)
 
+	// Cloud identity (cloud_credentials.go) — CICD-SEC-2.
+	findings = append(findings, CheckCloudCredentials(filePath, &workflow, jobs)...)
+
 	// Privileged-trigger hardening (rules.go) — CICD-SEC-1/4.
 	findings = append(findings, CheckWorkflowRunArtifactPoisoning(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckCheckoutPersistCredentials(filePath, &workflow, jobs)...)
