@@ -88,6 +88,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	findings = append(findings, CheckWorkflowRunArtifactPoisoning(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckCheckoutPersistCredentials(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckSecretsInheritPRTarget(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckPRTargetDualTrigger(filePath, &workflow, jobs)...)
 
 	// Injection-depth checks (injection_rules.go) — CICD-SEC-4/1.
 	findings = append(findings, CheckGitHubEnvInjection(filePath, &workflow, jobs)...)

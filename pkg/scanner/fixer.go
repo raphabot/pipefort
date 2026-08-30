@@ -128,6 +128,11 @@ func fixGitHubBytes(content []byte, findings []Finding) ([]byte, int, error) {
 					fixesCount++
 					modified = true
 				}
+			case RulePRTargetDualTrigger:
+				if fixPRTargetDualTrigger(rootNode, f) {
+					fixesCount++
+					modified = true
+				}
 			case RuleUnsoundCondition:
 				ifNode := findNodeByPosition(rootNode, f.Line, f.Column)
 				if ifNode != nil && ifNode.Kind == yaml.ScalarNode && fixUnsoundCondition(ifNode) {
