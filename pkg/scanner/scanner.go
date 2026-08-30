@@ -26,8 +26,14 @@ func ScanFile(filePath string) ([]Finding, error) {
 func ScanBytes(name string, content []byte) ([]Finding, error) {
 	filePath := name
 
+	// Runs on the raw document, before any platform dispatch: both hazards
+	// live in structure that decoding into WorkflowNode throws away, and both
+	// are platform-independent.
+	yamlFindings := CheckYAMLHardening(filePath, content)
+
 	if IsGitLabCIPath(filePath) {
 		glFindings, err := scanGitLabBytes(filePath, content)
+		glFindings = append(yamlFindings, glFindings...)
 		return dropFileLevelEgressAck(applyInlineIgnores(StampConfidence(glFindings), content), content), err
 	}
 
@@ -61,7 +67,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	}
 
 	// Run all checks
-	var findings []Finding
+	findings := yamlFindings
 	findings = append(findings, CheckPPE(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckPBAC(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckUnpinnedActions(filePath, &workflow, jobs)...)
