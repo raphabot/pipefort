@@ -40,8 +40,9 @@ optionally, to discover a token.
 
 The image built from `Dockerfile.action` exists to back the GitHub Action, so its
 `ENTRYPOINT` is the action wrapper, which builds its arguments from `INPUT_*`
-environment variables and **ignores anything passed on the command line**. Use one
-of these two forms:
+environment variables and **ignores anything passed on the command line**. Passing
+flags directly makes it scan the container root instead of your mount, and the run
+fails with an empty stdout. Use one of these two forms:
 
 ```bash
 docker build -f Dockerfile.action -t pipefort .

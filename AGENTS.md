@@ -110,9 +110,11 @@ docker run --rm -v "$PWD:/repo" --entrypoint pipefort pipefort -p /repo
 docker run --rm -v "$PWD:/repo" -e INPUT_PATH=/repo -e INPUT_OUTPUT=console pipefort
 ```
 
-`docker run ... pipefort -p /repo` (no `--entrypoint`, no `INPUT_*`) is **wrong**: the wrapper
-ignores `-p /repo`, defaults to SARIF, and writes `pipefort.sarif` inside the container where
-you will never see it.
+`docker run ... pipefort -p /repo` (no `--entrypoint`, no `INPUT_*`) is **wrong**. The wrapper
+discards `-p /repo` and falls back to `INPUT_PATH`'s default of `.` — and the image has no
+`WORKDIR`, so `.` is the *container* root. The observed result is an empty stdout, exit code 1,
+and `Error: scan failed: lstat proc/7/fd/4: no such file or directory` on stderr as the scan
+walks `/proc`. Your mounted repository is never read.
 
 ---
 
