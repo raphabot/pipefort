@@ -74,7 +74,11 @@ const (
 
 	// Trigger-boundary confusion (dual_trigger.go).
 	RulePRTargetDualTrigger RuleID = "cicd-sec-1-pr-target-dual-trigger"
-	RuleSecretInRunOutput   RuleID = "cicd-sec-6-secret-in-run-output"
+
+	// YAML input hardening (yaml_hardening.go). Portable: runs on the parsed
+	// document before any platform dispatch.
+	RuleYAMLHardening     RuleID = "cicd-sec-1-yaml-parser-hardening"
+	RuleSecretInRunOutput RuleID = "cicd-sec-6-secret-in-run-output"
 
 	// Exfiltration primitives (env_exfil.go).
 	RuleEnvExfil RuleID = "cicd-sec-6-env-exfil"
@@ -277,6 +281,17 @@ func ruleCatalog() []RuleSpec {
 			Description:     "Two findings. MEDIUM: a workflow bound to both pull_request and pull_request_target, so every job runs twice under opposite security models. HIGH: a pull_request_target or workflow_run job reading github.event.…head.… — attacker-controlled content meeting repository secrets and a write-scoped token.",
 			DocURL:          "/rules/cicd-sec-1-pr-target-dual-trigger",
 			Frameworks:      []string{FrameworkOWASP, FrameworkSLSABuildL3},
+		},
+		{
+			ID:              RuleYAMLHardening,
+			Category:        "CICD-SEC-1",
+			Title:           "Unsafe YAML tag or multiplying anchor expansion",
+			DefaultSeverity: SeverityHigh,
+			Surface:         SurfaceWorkflow,
+			Platform:        PlatformAny,
+			Description:     "Two findings on the parsed document. HIGH: a foreign YAML tag (!!python/object, !ruby/object, !!php/object and friends) that turns a config file into a deserialization sink. MEDIUM: a nested anchor graph whose expansion multiplies — the billion-laughs shape. Flat anchor reuse and GitLab's !reference are never flagged.",
+			DocURL:          "/rules/cicd-sec-1-yaml-parser-hardening",
+			Frameworks:      []string{FrameworkOWASP},
 		},
 		{
 			ID:                RuleLongLivedPAT,
