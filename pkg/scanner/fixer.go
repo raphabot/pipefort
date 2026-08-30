@@ -220,6 +220,12 @@ func fixGitHubBytes(content []byte, findings []Finding) ([]byte, int, error) {
 			fixesCount++
 			modified = true
 
+		case "BEST-PRAC-5": // Shell hardening — prepend strict mode
+			if fixShellHardening(rootNode, f) {
+				fixesCount++
+				modified = true
+			}
+
 		case "BEST-PRAC-4": // Missing concurrency guard
 			if _, c, _ := findMapKey(rootNode, "concurrency"); c == nil {
 				group := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "${{ github.workflow }}-${{ github.ref }}"}

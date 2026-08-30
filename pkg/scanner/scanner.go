@@ -103,6 +103,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	findings = append(findings, CheckOverprovisionedSecrets(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckUseTrustedPublishing(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckMissingConcurrency(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckShellHardening(filePath, &workflow, jobs)...)
 
 	// SLSA Build-track checks (slsa_rules.go).
 	findings = append(findings, CheckSLSAProvenance(filePath, &workflow, jobs)...)

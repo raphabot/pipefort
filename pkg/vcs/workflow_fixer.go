@@ -44,6 +44,9 @@ var workflowFixableRules = map[scanner.RuleID]bool{
 	scanner.RuleGitLabDebugTrace:     true, // CICD-SEC-7 (gl)
 	scanner.RuleGitLabAllowFailure:   true, // CICD-SEC-10 (gl)
 	scanner.RuleGitLabMissingTimeout: true, // BEST-PRAC-2 (gl)
+
+	// Portable fixer: one rule ID, an implementation on each platform.
+	scanner.RuleShellHardening: true, // BEST-PRAC-5 (github + gitlab)
 }
 
 // IsAutoFixableWorkflowRule reports whether the given rule has a workflow-YAML
