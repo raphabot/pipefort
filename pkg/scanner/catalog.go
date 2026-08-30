@@ -53,7 +53,10 @@ const (
 	RuleMissingPermissions    RuleID = "cicd-sec-5-missing-permissions"
 	RuleHardcodedSecrets      RuleID = "cicd-sec-6-hardcoded-secrets"
 	RuleDebugLoggingEnabled   RuleID = "cicd-sec-7-debug-logging-enabled"
-	RuleRepoDispatchUnfilt    RuleID = "cicd-sec-8-repository-dispatch-unfiltered"
+
+	// Artifact exposure (artifact_exposure.go).
+	RuleArtifactExposure   RuleID = "cicd-sec-7-artifact-exposure"
+	RuleRepoDispatchUnfilt RuleID = "cicd-sec-8-repository-dispatch-unfiltered"
 
 	// Runner egress (selfhosted_egress.go). Portable: same ID on both
 	// platforms.
@@ -444,6 +447,19 @@ func ruleCatalog() []RuleSpec {
 			Description:     "Flags workflows that set ACTIONS_STEP_DEBUG or ACTIONS_RUNNER_DEBUG to a truthy value in env. Debug logs include unmasked environment values and can leak secrets to anyone with read access to workflow logs.",
 			DocURL:          "/rules/cicd-sec-7",
 			Frameworks:      []string{FrameworkOWASP},
+		},
+		{
+			ID:              RuleArtifactExposure,
+			Category:        "CICD-SEC-7",
+			Title:           "Build artifact published without a retention cap",
+			DefaultSeverity: SeverityMedium,
+			Surface:         SurfaceWorkflow,
+			Description:     "Flags actions/upload-artifact steps with no retention-days (or one above 90) in a workflow that handles secrets or publishes a release, or whose uploaded path names a credential. An artifact is downloadable by anyone with repository read access for the whole retention window — everyone, on a public repository.",
+			DocURL:          "/rules/cicd-sec-7-artifact-exposure",
+			Frameworks:      []string{FrameworkOWASP},
+			// Whether an artifact actually carries something sensitive is a
+			// judgement about the workflow, not a property of the file.
+			DefaultConfidence: ConfidenceMedium,
 		},
 		{
 			ID:              RuleRepoDispatchUnfilt,

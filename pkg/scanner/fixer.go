@@ -239,10 +239,22 @@ func fixGitHubBytes(content []byte, findings []Finding) ([]byte, int, error) {
 				modified = true
 			}
 
-		case "CICD-SEC-7": // Insecure System Configuration - debug logging
-			if removeMapEntry(rootNode, f.Line, f.Column) {
-				fixesCount++
-				modified = true
+		case "CICD-SEC-7": // Insecure System Configuration — dispatch on rule.
+			// Two rules share this category and their fixers are opposites:
+			// one DELETES the entry it is pointed at, the other ADDS one.
+			// Dispatching on the category alone would let the debug fixer
+			// delete an upload-artifact input.
+			switch f.RuleID {
+			case RuleDebugLoggingEnabled:
+				if removeMapEntry(rootNode, f.Line, f.Column) {
+					fixesCount++
+					modified = true
+				}
+			case RuleArtifactExposure:
+				if fixArtifactExposure(rootNode, f) {
+					fixesCount++
+					modified = true
+				}
 			}
 
 		case "CICD-SEC-10": // Insufficient Logging & Visibility - continue-on-error

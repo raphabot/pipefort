@@ -77,6 +77,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	findings = append(findings, CheckSecretInRunOutput(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckEnvExfiltration(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckDebugLoggingEnabled(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckArtifactExposure(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckRepoDispatchUnfiltered(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckSelfHostedEgress(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckDownloadWithoutChecksum(filePath, &workflow, jobs)...)
