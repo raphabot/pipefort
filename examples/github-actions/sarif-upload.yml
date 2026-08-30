@@ -41,12 +41,12 @@ jobs:
 
       - name: Upload SARIF
         if: always()         # upload findings even when the scan failed the build
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.scan.outputs.sarif-file }}
 
 # Hardening note: this file uses mutable tag refs (actions/checkout@v4,
-# raphabot/pipefort@v0.1.7, codeql-action/upload-sarif@v3) so it stays readable.
+# raphabot/pipefort@v0.1.7, codeql-action/upload-sarif@v4) so it stays readable.
 # Pipefort flags those under cicd-sec-3-unpinned-action — by design, it holds its
 # own examples to the same standard. Pin them for real with:
 #

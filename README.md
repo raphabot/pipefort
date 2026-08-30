@@ -173,7 +173,7 @@ jobs:
 
       - name: Upload SARIF
         if: always()           # upload findings even when the scan fails the build
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: ${{ steps.scan.outputs.sarif-file }}
 ```

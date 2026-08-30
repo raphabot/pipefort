@@ -57,7 +57,7 @@ jobs:
 
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: pipefort.sarif
 
@@ -67,7 +67,7 @@ jobs:
         run: pipefort -p . --fail-on MEDIUM
 
 # Hardening note: this file still uses mutable tag refs (actions/checkout@v4,
-# codeql-action/upload-sarif@v3) so it stays readable. Pipefort flags those under
+# codeql-action/upload-sarif@v4) so it stays readable. Pipefort flags those under
 # cicd-sec-3-unpinned-action. Pin them for real with:
 #
 #     pipefort -p . --fix
