@@ -75,6 +75,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	// Extended OWASP coverage (owasp_extended_rules.go) — CICD-SEC-2/6/7/8/9/10.
 	findings = append(findings, CheckLongLivedPAT(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckSecretInRunOutput(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckEnvExfiltration(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckDebugLoggingEnabled(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckRepoDispatchUnfiltered(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckDownloadWithoutChecksum(filePath, &workflow, jobs)...)

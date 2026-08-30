@@ -66,6 +66,9 @@ const (
 	RuleSecretsInheritPRTarget       RuleID = "cicd-sec-4-secrets-inherit-pr-target"
 	RuleSecretInRunOutput            RuleID = "cicd-sec-6-secret-in-run-output"
 
+	// Exfiltration primitives (env_exfil.go).
+	RuleEnvExfil RuleID = "cicd-sec-6-env-exfil"
+
 	// Injection-depth checks (injection_rules.go).
 	RuleGitHubEnvInjection      RuleID = "cicd-sec-4-github-env-injection"
 	RuleSpoofableActorCondition RuleID = "cicd-sec-1-spoofable-actor-condition"
@@ -400,6 +403,16 @@ func ruleCatalog() []RuleSpec {
 			DocURL:            "/rules/cicd-sec-6",
 			Frameworks:        []string{FrameworkOWASP},
 			DefaultConfidence: ConfidenceMedium,
+		},
+		{
+			ID:              RuleEnvExfil,
+			Category:        "CICD-SEC-6",
+			Title:           "Run step dumps the environment or echoes a CI token",
+			DefaultSeverity: SeverityHigh,
+			Surface:         SurfaceWorkflow,
+			Description:     "Flags the two primitives a poisoned or malicious step uses to get secrets off a runner: printing the whole environment (printenv, bare env, set |, /proc/self/environ) and echoing a run-scoped CI token (GITHUB_TOKEN and siblings) to the log or to a step output. Encoded variants are covered because the matcher anchors on the primitive at the head of the pipe.",
+			DocURL:          "/rules/cicd-sec-6-env-exfil",
+			Frameworks:      []string{FrameworkOWASP},
 		},
 		{
 			ID:              RuleDebugLoggingEnabled,
