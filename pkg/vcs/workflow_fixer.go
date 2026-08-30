@@ -38,6 +38,7 @@ var workflowFixableRules = map[scanner.RuleID]bool{
 	// not exist in the file, so the fix annotates the line rather than
 	// rewriting it. See fixCloudStaticCredentials.
 	scanner.RuleCloudStaticCredentials: true, // CICD-SEC-2
+	scanner.RulePRTargetDualTrigger:    true, // CICD-SEC-1 (trigger block only)
 
 	// GitLab CI fixers — conservative trio shipped in the parity v1.
 	scanner.RuleGitLabDebugTrace:     true, // CICD-SEC-7 (gl)

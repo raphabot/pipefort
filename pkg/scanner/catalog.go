@@ -64,7 +64,10 @@ const (
 	RuleWorkflowRunArtifactPoisoning RuleID = "cicd-sec-1-workflow-run-artifact-poisoning"
 	RuleCheckoutPersistCreds         RuleID = "cicd-sec-1-checkout-persist-credentials"
 	RuleSecretsInheritPRTarget       RuleID = "cicd-sec-4-secrets-inherit-pr-target"
-	RuleSecretInRunOutput            RuleID = "cicd-sec-6-secret-in-run-output"
+
+	// Trigger-boundary confusion (dual_trigger.go).
+	RulePRTargetDualTrigger RuleID = "cicd-sec-1-pr-target-dual-trigger"
+	RuleSecretInRunOutput   RuleID = "cicd-sec-6-secret-in-run-output"
 
 	// Exfiltration primitives (env_exfil.go).
 	RuleEnvExfil RuleID = "cicd-sec-6-env-exfil"
@@ -252,6 +255,16 @@ func ruleCatalog() []RuleSpec {
 			Surface:         SurfaceWorkflow,
 			Description:     "Detects pull_request_target workflows that check out the PR head ref and then run untrusted code with repository secrets.",
 			DocURL:          "/rules/cicd-sec-1",
+			Frameworks:      []string{FrameworkOWASP, FrameworkSLSABuildL3},
+		},
+		{
+			ID:              RulePRTargetDualTrigger,
+			Category:        "CICD-SEC-1",
+			Title:           "pull_request_target trigger boundary confusion",
+			DefaultSeverity: SeverityHigh,
+			Surface:         SurfaceWorkflow,
+			Description:     "Two findings. MEDIUM: a workflow bound to both pull_request and pull_request_target, so every job runs twice under opposite security models. HIGH: a pull_request_target or workflow_run job reading github.event.…head.… — attacker-controlled content meeting repository secrets and a write-scoped token.",
+			DocURL:          "/rules/cicd-sec-1-pr-target-dual-trigger",
 			Frameworks:      []string{FrameworkOWASP, FrameworkSLSABuildL3},
 		},
 		{
