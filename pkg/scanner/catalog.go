@@ -79,7 +79,11 @@ const (
 	RuleCachePoisonRelease RuleID = "cicd-sec-4-cache-poisoning-release"
 	RuleOverprovSecrets    RuleID = "cicd-sec-6-overprovisioned-secrets"
 	RuleUseTrustedPublish  RuleID = "cicd-sec-2-use-trusted-publishing"
-	RuleMissingConcurrency RuleID = "best-prac-4-missing-concurrency"
+
+	// Cloud identity (cloud_credentials.go). Portable: the same ID fires on
+	// GitHub Actions and GitLab CI, like best-prac-1 and cicd-sec-9.
+	RuleCloudStaticCredentials RuleID = "cicd-sec-2-cloud-credentials"
+	RuleMissingConcurrency     RuleID = "best-prac-4-missing-concurrency"
 
 	// Config-driven action allow/deny policy (forbidden_uses.go). Silent unless
 	// a .pipefort.yml forbidden-uses block is present.
@@ -257,6 +261,21 @@ func ruleCatalog() []RuleSpec {
 			DocURL:            "/rules/cicd-sec-2",
 			Frameworks:        []string{FrameworkOWASP},
 			DefaultConfidence: ConfidenceMedium,
+		},
+		{
+			ID:              RuleCloudStaticCredentials,
+			Category:        "CICD-SEC-2",
+			Title:           "Static cloud credential used where OIDC federation is available",
+			DefaultSeverity: SeverityMedium,
+			Surface:         SurfaceWorkflow,
+			Platform:        PlatformAny,
+			Description:     "Flags pipelines that authenticate to AWS, GCP, or Azure with a long-lived static credential — a login action configured with an access key or service-account JSON, a static-credential env/variable name, or a cloud CLI login — where the provider would instead issue short-lived credentials against the runner's OIDC token.",
+			DocURL:          "/rules/cicd-sec-2-cloud-credentials",
+			Frameworks:      []string{FrameworkOWASP},
+			// Login-action and env-name detection is name-exact; the
+			// script-command half is a pattern match, and stamps MEDIUM
+			// per finding.
+			DefaultConfidence: ConfidenceHigh,
 		},
 		{
 			ID:              RuleUnpinnedAction,
