@@ -91,6 +91,10 @@ const (
 	RuleCloudStaticCredentials RuleID = "cicd-sec-2-cloud-credentials"
 	RuleMissingConcurrency     RuleID = "best-prac-4-missing-concurrency"
 
+	// Shell hardening (shell_hardening.go). Portable: same ID on both
+	// platforms, like best-prac-1 and cicd-sec-2-cloud-credentials.
+	RuleShellHardening RuleID = "best-prac-5-shell-hardening"
+
 	// Config-driven action allow/deny policy (forbidden_uses.go). Silent unless
 	// a .pipefort.yml forbidden-uses block is present.
 	RuleForbiddenUses RuleID = "cicd-sec-5-forbidden-uses"
@@ -637,6 +641,17 @@ func ruleCatalog() []RuleSpec {
 			Surface:         SurfaceWorkflow,
 			Description:     "Flags deploy/release-shaped workflows without a concurrency: group. Overlapping runs can race on shared caches, artifacts, and deploy targets, producing double-deploys or inconsistent state.",
 			DocURL:          "/rules/best-prac-4-missing-concurrency",
+			Persona:         PersonaPedantic,
+		},
+		{
+			ID:              RuleShellHardening,
+			Category:        "BEST-PRAC-5",
+			Title:           "Multi-command shell step runs without strict mode",
+			DefaultSeverity: SeverityLow,
+			Surface:         SurfaceWorkflow,
+			Platform:        PlatformAny,
+			Description:     "Flags multi-command bash run blocks (GitHub Actions) and multi-command scripts (GitLab CI) that do not enable `set -euo pipefail`. Both runners set -e only, so a failure on the left of a pipe is swallowed and the step passes green, and an unset variable expands to the empty string. Single-command steps and non-bash shells are out of scope.",
+			DocURL:          "/rules/best-prac-5-shell-hardening",
 			Persona:         PersonaPedantic,
 		},
 		{

@@ -355,10 +355,11 @@ func TestIsAutoFixableWorkflowRule(t *testing.T) {
 func TestAutoFixableWorkflowRulesIsSortedAndComplete(t *testing.T) {
 	rules := AutoFixableWorkflowRules()
 	// 14 GitHub Actions fixers + 3 GitLab CI fixers (debug-trace,
-	// allow-failure, missing-timeout). Bump this count when adding new
-	// platform-specific fixers and confirm the SPA picks them up too.
-	if len(rules) != 17 {
-		t.Errorf("expected 17 fixable workflow rules, got %d", len(rules))
+	// allow-failure, missing-timeout) + 1 portable fixer (shell-hardening,
+	// which has an implementation on both platforms). Bump this count when
+	// adding new fixers and confirm the SPA picks them up too.
+	if len(rules) != 18 {
+		t.Errorf("expected 18 fixable workflow rules, got %d", len(rules))
 	}
 	for i := 1; i < len(rules); i++ {
 		if rules[i-1] >= rules[i] {

@@ -669,6 +669,7 @@ func TestFrameworkCoverage(t *testing.T) {
 		RuleGitLabSelfHostedTags:  true, // hygiene parallel for GitLab
 		RuleMissingConcurrency:    true, // reliability hygiene, not in OWASP/SLSA scope
 		RuleGitLabMissingResGroup: true, // reliability hygiene parallel for GitLab
+		RuleShellHardening:        true, // resilience hygiene (strict shell mode), not in OWASP/SLSA scope
 	}
 	for _, r := range Rules() {
 		if allowedUntagged[r.ID] {
