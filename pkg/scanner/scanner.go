@@ -28,7 +28,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 
 	if IsGitLabCIPath(filePath) {
 		glFindings, err := scanGitLabBytes(filePath, content)
-		return applyInlineIgnores(StampConfidence(glFindings), content), err
+		return dropFileLevelEgressAck(applyInlineIgnores(StampConfidence(glFindings), content), content), err
 	}
 
 	var workflow WorkflowNode
@@ -78,6 +78,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	findings = append(findings, CheckEnvExfiltration(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckDebugLoggingEnabled(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckRepoDispatchUnfiltered(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckSelfHostedEgress(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckDownloadWithoutChecksum(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckContinueOnErrorJob(filePath, &workflow, jobs)...)
 
@@ -113,7 +114,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	findings = append(findings, CheckSLSACachePoisoning(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckSLSAVerifyStep(filePath, &workflow, jobs)...)
 
-	return applyInlineIgnores(StampConfidence(findings), content), nil
+	return dropFileLevelEgressAck(applyInlineIgnores(StampConfidence(findings), content), content), nil
 }
 
 // ScanDir walks a directory looking for CI/CD configs to scan:
