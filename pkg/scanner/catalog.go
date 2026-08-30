@@ -54,11 +54,15 @@ const (
 	RuleHardcodedSecrets      RuleID = "cicd-sec-6-hardcoded-secrets"
 	RuleDebugLoggingEnabled   RuleID = "cicd-sec-7-debug-logging-enabled"
 	RuleRepoDispatchUnfilt    RuleID = "cicd-sec-8-repository-dispatch-unfiltered"
-	RuleDownloadNoChecksum    RuleID = "cicd-sec-9-download-without-checksum"
-	RuleContinueOnErrorJob    RuleID = "cicd-sec-10-continue-on-error-job"
-	RulePipeToShell           RuleID = "best-prac-1-pipe-to-shell"
-	RuleMissingTimeout        RuleID = "best-prac-2-missing-timeout"
-	RuleSelfHostedRunners     RuleID = "best-prac-3-self-hosted-runners"
+
+	// Runner egress (selfhosted_egress.go). Portable: same ID on both
+	// platforms.
+	RuleSelfHostedEgress   RuleID = "cicd-sec-8-selfhosted-egress"
+	RuleDownloadNoChecksum RuleID = "cicd-sec-9-download-without-checksum"
+	RuleContinueOnErrorJob RuleID = "cicd-sec-10-continue-on-error-job"
+	RulePipeToShell        RuleID = "best-prac-1-pipe-to-shell"
+	RuleMissingTimeout     RuleID = "best-prac-2-missing-timeout"
+	RuleSelfHostedRunners  RuleID = "best-prac-3-self-hosted-runners"
 
 	// Additional workflow checks (rules.go / owasp_extended_rules.go).
 	RuleWorkflowRunArtifactPoisoning RuleID = "cicd-sec-1-workflow-run-artifact-poisoning"
@@ -450,6 +454,20 @@ func ruleCatalog() []RuleSpec {
 			Description:     "Flags workflows triggered by repository_dispatch without an explicit types: allowlist. Any third-party service holding a token with repo scope can dispatch arbitrary event types and trigger the workflow with attacker-controlled inputs.",
 			DocURL:          "/rules/cicd-sec-8",
 			Frameworks:      []string{FrameworkOWASP},
+		},
+		{
+			ID:              RuleSelfHostedEgress,
+			Category:        "CICD-SEC-8",
+			Title:           "Sensitive job on a self-hosted runner with no declared egress restriction",
+			DefaultSeverity: SeverityMedium,
+			Surface:         SurfaceWorkflow,
+			Platform:        PlatformAny,
+			Description:     "Flags a job on a self-hosted runner that also consumes secrets, runs under pull_request_target, or publishes a release — with no egress policy declared. Self-hosted alone is best-prac-3; this fires only where the combination bites. Satisfied by `step-security/harden-runner` with `egress-policy: block`, or by a `# pipefort: egress-restricted` comment when egress is governed outside the repository.",
+			DocURL:          "/rules/cicd-sec-8-selfhosted-egress",
+			Frameworks:      []string{FrameworkOWASP},
+			// The sensitive-trait test is a heuristic over what a job
+			// touches, not a deterministic property of the file.
+			DefaultConfidence: ConfidenceMedium,
 		},
 		{
 			ID:                RuleDownloadNoChecksum,

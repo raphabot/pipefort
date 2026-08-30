@@ -69,6 +69,7 @@ func scanGitLabBytes(filePath string, content []byte) ([]Finding, error) {
 	out = append(out, checkGitLabDownloadNoChecksum(filePath, jobs)...)
 	out = append(out, checkGitLabCloudCredentials(filePath, jobs, vars)...)
 	out = append(out, checkGitLabShellHardening(filePath, jobs, gitlabDefaultBeforeScript(root))...)
+	out = append(out, checkGitLabSelfHostedEgress(filePath, jobs)...)
 
 	return out, nil
 }
