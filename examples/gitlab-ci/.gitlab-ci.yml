@@ -1,0 +1,55 @@
+# Pipefort in a GitLab CI pipeline.
+#
+# Copy to:      .gitlab-ci.yml (or include it from one)
+# Requires:     a runner with curl and a shell (the alpine image below is enough)
+# Env vars:     none for the local scan.
+#               GITLAB_TOKEN (PAT, `api` scope) only if you add the project-
+#               settings audit or --fix-mr, which are remote operations.
+# Result:       the job fails when a finding is >= MEDIUM. The JSON report is
+#               kept as an artifact for 1 week.
+#
+# Pipefort scans .gitlab-ci.yml and .gitlab-ci/**/*.yml with the 11 GitLab CI
+# rules plus the two portable ones (pipe-to-shell, download-without-checksum).
+#
+# Hardening note: the install step below pipes a script to a shell for brevity,
+# which Pipefort's own best-prac-1-pipe-to-shell rule flags. For a hardened
+# pipeline, download the release tarball and verify it against the release's
+# checksums.txt instead — see ../github-actions/cli-binary.yml for the exact
+# commands (the asset names are identical; only the runner syntax differs).
+
+stages:
+  - security
+
+pipefort:
+  stage: security
+  image: alpine:3.20
+  before_script:
+    - apk add --no-cache curl bash
+    - curl -fsSL https://pipefort.com/install.sh | sh
+    - pipefort --version
+  script:
+    # Human-readable output in the job log ...
+    - pipefort -p . --fail-on MEDIUM
+  after_script:
+    # ... and a machine-readable copy as an artifact, even when the gate failed.
+    - pipefort -p . --fail-on NONE -o json > pipefort.json || true
+  artifacts:
+    when: always
+    paths:
+      - pipefort.json
+    expire_in: 1 week
+
+# Optional: audit the GitLab PROJECT settings (protected branches, merge policy,
+# public pipelines, approvals) in addition to the YAML. This is a remote scan —
+# it calls the GitLab API and needs a token with the `api` scope.
+#
+# pipefort:settings:
+#   stage: security
+#   image: alpine:3.20
+#   rules:
+#     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+#   before_script:
+#     - apk add --no-cache curl bash git
+#     - curl -fsSL https://pipefort.com/install.sh | sh
+#   script:
+#     - pipefort -g "$CI_PROJECT_URL" --gitlab-token "$GITLAB_TOKEN" --fail-on HIGH

@@ -1,0 +1,70 @@
+# Annotated .pipefort.yml — every supported field, with its accepted values.
+#
+# Copy to:      .pipefort.yml at your repository root, and RENAME it (the leading
+#               dot matters). Discovery order, first match wins:
+#                 .pipefort.yml → .pipefort.yaml → .github/pipefort.yml → .github/pipefort.yaml
+# Requires:     nothing; the file is read by every scan path (CLI, MCP, hosted).
+# Env vars:     none
+# Result:       `pipefort -p .` applies these defaults and suppressions. Verify
+#               with:  pipefort -p . --config .pipefort.yml
+#               Disable for one run with:  pipefort -p . --no-config
+#
+# Every field is optional. An empty file applies nothing.
+# Precedence: an explicitly-passed CLI flag > this file > the flag default.
+
+# ---------------------------------------------------------------------------
+# Defaults for the matching CLI flags.
+# ---------------------------------------------------------------------------
+
+# all | owasp | slsa | slsa-build-l1 | slsa-build-l2 | slsa-build-l3
+#     | slsa-source-l2 | slsa-source-l3 | slsa-source-l4
+ruleset: all
+
+# HIGH | MEDIUM | LOW. LOW (the default) keeps every finding.
+min-confidence: LOW
+
+# regular  — high-signal security checks only (63 rules; the default)
+# pedantic — adds hygiene/best-practice rules (71 rules)
+# auditor  — everything (74 rules)
+persona: regular
+
+# ---------------------------------------------------------------------------
+# Per-rule overrides, keyed by rule ID. Full list: pipefort.com/docs/rules/overview
+# ---------------------------------------------------------------------------
+rules:
+  # Rewrite a rule's severity everywhere: HIGH | MEDIUM | LOW | INFO.
+  cicd-sec-3-unpinned-action:
+    severity: LOW
+    ignore:
+      # Suppress the rule for a whole file. `file` is a repo-relative glob.
+      - file: .github/workflows/docs.yml
+      # Or only at specific 1-based line numbers.
+      - file: .github/workflows/release.yml
+        lines: [42, 43]
+
+  # Turn a rule off completely. A repo config can only DISABLE a rule — it can
+  # never re-enable one an organization policy has switched off.
+  best-prac-2-missing-timeout:
+    enabled: false
+
+  # Globs work across directories.
+  cicd-sec-5-missing-permissions:
+    ignore:
+      - file: .github/workflows/generated-*.yml
+
+# ---------------------------------------------------------------------------
+# Action allow/deny policy. Drives the cicd-sec-5-forbidden-uses rule, which is
+# SILENT unless this key is present. Set `allow` XOR `deny` — if both are given,
+# `allow` wins and `deny` is ignored.
+# ---------------------------------------------------------------------------
+forbidden-uses:
+  # Deny list: everything is permitted except these.
+  deny:
+    - some-org/unreviewed-action
+    - another-org/deprecated-action
+
+  # Allow list (mutually exclusive with `deny`): ONLY these may be used.
+  # allow:
+  #   - actions/checkout
+  #   - actions/setup-node
+  #   - my-org/*
