@@ -47,6 +47,8 @@ var workflowFixableRules = map[scanner.RuleID]bool{
 
 	// Portable fixer: one rule ID, an implementation on each platform.
 	scanner.RuleShellHardening: true, // BEST-PRAC-5 (github + gitlab)
+
+	scanner.RuleArtifactExposure: true, // CICD-SEC-7 (retention cap)
 }
 
 // IsAutoFixableWorkflowRule reports whether the given rule has a workflow-YAML
