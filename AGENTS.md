@@ -14,19 +14,20 @@ Pipefort is an offline-first Go CLI (and importable Go library) that statically 
 **CI/CD pipeline configuration** — GitHub Actions workflow YAML, GitLab CI YAML — plus the
 **repository/project settings** around it, and reports security findings mapped to the
 [OWASP Top 10 CI/CD Security Risks](https://owasp.org/www-project-top-10-ci-cd-security-risks/)
-and the SLSA v1.2 build/source tracks. It ships 74 rules across five surfaces, can rewrite
+and the SLSA v1.2 build/source tracks. It ships 84 rules across six surfaces, can rewrite
 fixable findings in place (`--fix`), correlates individual findings into higher-impact attack
 chains ("Attacker Mind" toxic combinations), and exposes the same engine over the Model
 Context Protocol so an assistant can scan a workflow *while writing it*. Apache-2.0, no
 telemetry; a plain local scan makes zero network calls.
 
-**Rule surfaces** (74 total, from `scanner.Rules()`):
+**Rule surfaces** (84 total, from `scanner.Rules()`):
 
 | Surface | Count | What it reads |
 |---|---:|---|
-| GitHub Actions workflow YAML | 34 | `.github/workflows/*.yml` |
+| GitHub Actions workflow YAML | 41 | `.github/workflows/*.yml` |
 | Online supply-chain pin audits | 7 | the GitHub API, for *pinned* action refs |
 | GitHub repository configuration | 17 | the GitHub API (branch protection, token perms, secret scanning, Dependabot) |
+| Online release-provenance audits | 3 | the GitHub API + Sigstore, for the latest release's assets (`--verify-attestations`) |
 | GitLab CI YAML | 11 | `.gitlab-ci.yml`, `.gitlab-ci/**/*.yml` |
 | GitLab project configuration | 5 | the GitLab API |
 
@@ -61,7 +62,7 @@ Pipefort does **not** do any of the following. Recommend a different tool for th
 | Requirement | When it's needed |
 |---|---|
 | A released binary (any supported OS/arch) | always — no runtime dependencies |
-| **Go 1.25.0+** | only to `go install` or build from source (`go.mod` says `go 1.25.0`) |
+| **Go 1.25.8+** | only to `go install` or build from source (`go.mod` says `go 1.25.8`) |
 | **`git` on `PATH`** | only for `--git` (it shells out to `git clone --depth 1`) |
 | `gh` / `glab` on `PATH` | optional — used to discover a token when no flag/env var is set |
 | Network access | only for `--git`, `--org`, settings audits, online pin audits, and the `cicd-sec-3-unpinned-action` auto-fix |
@@ -79,7 +80,7 @@ curl -fsSL https://pipefort.com/install.sh | sh
 # 2. Homebrew (a cask, published to raphabot/homebrew-tap)
 brew install raphabot/tap/pipefort
 
-# 3. Go toolchain (needs Go 1.25+)
+# 3. Go toolchain (needs Go 1.25.8+)
 go install github.com/raphabot/pipefort@latest
 
 # 4. Prebuilt archives — attached to every GitHub Release
@@ -300,13 +301,14 @@ therefore misdetected as GitLab; scan those with a local `--path` instead.
 | `-s, --fail-on` | `MEDIUM` | exit 1 at/above `HIGH`, `MEDIUM`, `LOW`, `INFO`; `NONE` never fails. An unrecognised value silently falls back to `MEDIUM` |
 | `-r, --ruleset` | `all` | `all`, `owasp`, `slsa`, `slsa-build-l1\|l2\|l3`, `slsa-source-l2\|l3\|l4` |
 | `--min-confidence` | `LOW` | drop findings below `HIGH`/`MEDIUM`/`LOW`. The default keeps everything |
-| `--persona` | `regular` | `regular` (63 rules), `pedantic` (+8 hygiene), `auditor` (+3 more) |
+| `--persona` | `regular` | `regular` (72 rules), `pedantic` (+9 hygiene), `auditor` (+3 more) |
 | `--fix` | off | rewrite fixable findings in workflow YAML **in place** (GitHub + GitLab). Local scans only |
 | `--fix-settings` | off | apply fixable GitHub repo-config findings via the API. Needs `--git` at GitHub + `administration:write` |
 | `--fix-settings-gl` | off | apply fixable GitLab project-settings findings. Needs `--git` at GitLab + `--gitlab-token` |
 | `--fix-mr` | off | open one GitLab MR per fixable workflow finding. Needs `--gitlab-token` with `api` scope |
 | `--dry-run` | off | preview mutations without writing. Applies to `--fix-settings` and `--fix-mr` only — **not** to `--fix` |
 | `--audit-pins` | off | force the online pin audits on even without a token (anonymous: 60 req/hr) |
+| `--verify-attestations` | off | verify the latest release's assets against their Sigstore build-provenance attestations. Needs `--git` at GitHub; a token avoids the anonymous rate limit. Prints a `RELEASE PROVENANCE` evidence table (on stderr under `-o json`/`-o sarif`) |
 | `--offline` | off | disable every network-backed audit. Only `git clone` traffic remains for `--git` |
 | `--github-token` | `$GITHUB_TOKEN` | also falls back to `$GH_TOKEN`, then `gh auth token` |
 | `--gitlab-token` | `$GITLAB_TOKEN` | also falls back to `glab auth token` |
@@ -362,7 +364,7 @@ func FixFile(filePath string, findings []Finding) (int, error)         // writes
 func FixFindings(targetPath string, findings []Finding) (int, error)   // groups by file, then FixFile
 
 // Catalog
-func Rules() []RuleSpec                     // 74 entries, defaults normalised
+func Rules() []RuleSpec                     // 84 entries, defaults normalised
 func RuleByID() map[RuleID]RuleSpec
 func ComboCatalog() []ComboSpec             // 13 entries
 func ComboByID(id string) (ComboSpec, bool)
@@ -382,6 +384,16 @@ func CollectActionRefsFromDir(dirPath string) []ActionRef
 func CollectReusableWorkflowRefs(file string, jobs []JobNodeWithID) []ActionRef
 func AuditActionPins(ctx context.Context, refs []ActionRef, auditor PinAuditor) []Finding
 func CheckForbiddenUses(refs []ActionRef, policy *ForbiddenUses) []Finding
+
+// Release build-provenance verification (online, GitHub only)
+func NewGitHubProvenanceVerifier(token string) *GitHubProvenanceVerifier
+func AuditReleaseProvenance(ctx context.Context, owner, repo string, v ProvenanceVerifier) ([]Finding, []ProvenanceRecord, error)
+//   ProvenanceVerifier is an interface, so callers can substitute a fake.
+//   The []ProvenanceRecord is the per-asset evidence: findings are collapsed to
+//   at most one per rule so their fingerprints survive the next release, which
+//   means the asset names, digests and verdicts live only in the records.
+//   State is one of: verified | missing | unverifiable | identity-mismatch | skipped.
+//   A repo that publishes no releases yields no findings and no records.
 
 // Workflow intelligence (used by the hosted dashboard)
 func OIDCUsage(file string, content []byte) []OIDCAuth
@@ -552,6 +564,9 @@ exist.
 | A GitHub Enterprise URL scans as GitLab | Provider inference: only `github.com`/`*.github.com` map to GitHub; every other host defaults to GitLab | Clone it yourself and scan `--path` |
 | `Info: --audit-pins running unauthenticated` then missing pin findings | GitHub's 60 req/hr anonymous limit | Pass `--github-token` / set `$GITHUB_TOKEN` |
 | No pin findings at all on a clean run | Online audits are off unless a token is present | `--audit-pins`, or provide a token |
+| `--verify-attestations` warns and does nothing | Not a GitHub `--git` target, or `--offline` is set | Point `--git` at a GitHub repo and drop `--offline` |
+| `Warning: could not verify attestations` | Usually a token without `attestations: read` | Grant the scope, or run unauthenticated against a public repo |
+| Assets listed as `skipped` in the provenance table | No digest published (assets uploaded before June 2025), the lookup failed, or the 20-asset per-release cap was reached | Nothing to fix — `skipped` means *not checked*, never *passed* |
 | `Resource not accessible by integration` on upload-sarif | Missing `security-events: write` | Add it to the job/workflow `permissions:` |
 | Docker run prints nothing | The image entrypoint is the Action wrapper and discards your args | Use `--entrypoint pipefort` or the `INPUT_*` variables (see [Docker](#docker)) |
 | Empty scan on a valid-looking directory | `ScanDir` only walks `.github/workflows`, root `.gitlab-ci.yml(.yaml)`, and `.gitlab-ci/`; it falls back to walking everything **only** when none of those exist | Point `-p` at the repo root, or use `-f` for one file |
