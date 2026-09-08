@@ -88,4 +88,7 @@ type StepNode struct {
 	If   yaml.Node `yaml:"if"`
 	Env  yaml.Node `yaml:"env"`
 	With yaml.Node `yaml:"with"`
+	// Shell is the step's explicit `shell:` override. Empty means the
+	// runner default: bash on Linux/macOS, pwsh on Windows.
+	Shell yaml.Node `yaml:"shell"`
 }

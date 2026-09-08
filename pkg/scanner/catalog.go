@@ -53,18 +53,35 @@ const (
 	RuleMissingPermissions    RuleID = "cicd-sec-5-missing-permissions"
 	RuleHardcodedSecrets      RuleID = "cicd-sec-6-hardcoded-secrets"
 	RuleDebugLoggingEnabled   RuleID = "cicd-sec-7-debug-logging-enabled"
-	RuleRepoDispatchUnfilt    RuleID = "cicd-sec-8-repository-dispatch-unfiltered"
-	RuleDownloadNoChecksum    RuleID = "cicd-sec-9-download-without-checksum"
-	RuleContinueOnErrorJob    RuleID = "cicd-sec-10-continue-on-error-job"
-	RulePipeToShell           RuleID = "best-prac-1-pipe-to-shell"
-	RuleMissingTimeout        RuleID = "best-prac-2-missing-timeout"
-	RuleSelfHostedRunners     RuleID = "best-prac-3-self-hosted-runners"
+
+	// Artifact exposure (artifact_exposure.go).
+	RuleArtifactExposure   RuleID = "cicd-sec-7-artifact-exposure"
+	RuleRepoDispatchUnfilt RuleID = "cicd-sec-8-repository-dispatch-unfiltered"
+
+	// Runner egress (selfhosted_egress.go). Portable: same ID on both
+	// platforms.
+	RuleSelfHostedEgress   RuleID = "cicd-sec-8-selfhosted-egress"
+	RuleDownloadNoChecksum RuleID = "cicd-sec-9-download-without-checksum"
+	RuleContinueOnErrorJob RuleID = "cicd-sec-10-continue-on-error-job"
+	RulePipeToShell        RuleID = "best-prac-1-pipe-to-shell"
+	RuleMissingTimeout     RuleID = "best-prac-2-missing-timeout"
+	RuleSelfHostedRunners  RuleID = "best-prac-3-self-hosted-runners"
 
 	// Additional workflow checks (rules.go / owasp_extended_rules.go).
 	RuleWorkflowRunArtifactPoisoning RuleID = "cicd-sec-1-workflow-run-artifact-poisoning"
 	RuleCheckoutPersistCreds         RuleID = "cicd-sec-1-checkout-persist-credentials"
 	RuleSecretsInheritPRTarget       RuleID = "cicd-sec-4-secrets-inherit-pr-target"
-	RuleSecretInRunOutput            RuleID = "cicd-sec-6-secret-in-run-output"
+
+	// Trigger-boundary confusion (dual_trigger.go).
+	RulePRTargetDualTrigger RuleID = "cicd-sec-1-pr-target-dual-trigger"
+
+	// YAML input hardening (yaml_hardening.go). Portable: runs on the parsed
+	// document before any platform dispatch.
+	RuleYAMLHardening     RuleID = "cicd-sec-1-yaml-parser-hardening"
+	RuleSecretInRunOutput RuleID = "cicd-sec-6-secret-in-run-output"
+
+	// Exfiltration primitives (env_exfil.go).
+	RuleEnvExfil RuleID = "cicd-sec-6-env-exfil"
 
 	// Injection-depth checks (injection_rules.go).
 	RuleGitHubEnvInjection      RuleID = "cicd-sec-4-github-env-injection"
@@ -79,7 +96,15 @@ const (
 	RuleCachePoisonRelease RuleID = "cicd-sec-4-cache-poisoning-release"
 	RuleOverprovSecrets    RuleID = "cicd-sec-6-overprovisioned-secrets"
 	RuleUseTrustedPublish  RuleID = "cicd-sec-2-use-trusted-publishing"
-	RuleMissingConcurrency RuleID = "best-prac-4-missing-concurrency"
+
+	// Cloud identity (cloud_credentials.go). Portable: the same ID fires on
+	// GitHub Actions and GitLab CI, like best-prac-1 and cicd-sec-9.
+	RuleCloudStaticCredentials RuleID = "cicd-sec-2-cloud-credentials"
+	RuleMissingConcurrency     RuleID = "best-prac-4-missing-concurrency"
+
+	// Shell hardening (shell_hardening.go). Portable: same ID on both
+	// platforms, like best-prac-1 and cicd-sec-2-cloud-credentials.
+	RuleShellHardening RuleID = "best-prac-5-shell-hardening"
 
 	// Config-driven action allow/deny policy (forbidden_uses.go). Silent unless
 	// a .pipefort.yml forbidden-uses block is present.
@@ -256,6 +281,27 @@ func ruleCatalog() []RuleSpec {
 			Frameworks:      []string{FrameworkOWASP, FrameworkSLSABuildL3},
 		},
 		{
+			ID:              RulePRTargetDualTrigger,
+			Category:        "CICD-SEC-1",
+			Title:           "pull_request_target trigger boundary confusion",
+			DefaultSeverity: SeverityHigh,
+			Surface:         SurfaceWorkflow,
+			Description:     "Two findings. MEDIUM: a workflow bound to both pull_request and pull_request_target, so every job runs twice under opposite security models. HIGH: a pull_request_target or workflow_run job reading github.event.…head.… — attacker-controlled content meeting repository secrets and a write-scoped token.",
+			DocURL:          "/rules/cicd-sec-1-pr-target-dual-trigger",
+			Frameworks:      []string{FrameworkOWASP, FrameworkSLSABuildL3},
+		},
+		{
+			ID:              RuleYAMLHardening,
+			Category:        "CICD-SEC-1",
+			Title:           "Unsafe YAML tag or multiplying anchor expansion",
+			DefaultSeverity: SeverityHigh,
+			Surface:         SurfaceWorkflow,
+			Platform:        PlatformAny,
+			Description:     "Two findings on the parsed document. HIGH: a foreign YAML tag (!!python/object, !ruby/object, !!php/object and friends) that turns a config file into a deserialization sink. MEDIUM: a nested anchor graph whose expansion multiplies — the billion-laughs shape. Flat anchor reuse and GitLab's !reference are never flagged.",
+			DocURL:          "/rules/cicd-sec-1-yaml-parser-hardening",
+			Frameworks:      []string{FrameworkOWASP},
+		},
+		{
 			ID:                RuleLongLivedPAT,
 			Category:          "CICD-SEC-2",
 			Title:             "Long-lived personal access token used in workflow",
@@ -265,6 +311,21 @@ func ruleCatalog() []RuleSpec {
 			DocURL:            "/rules/cicd-sec-2",
 			Frameworks:        []string{FrameworkOWASP},
 			DefaultConfidence: ConfidenceMedium,
+		},
+		{
+			ID:              RuleCloudStaticCredentials,
+			Category:        "CICD-SEC-2",
+			Title:           "Static cloud credential used where OIDC federation is available",
+			DefaultSeverity: SeverityMedium,
+			Surface:         SurfaceWorkflow,
+			Platform:        PlatformAny,
+			Description:     "Flags pipelines that authenticate to AWS, GCP, or Azure with a long-lived static credential — a login action configured with an access key or service-account JSON, a static-credential env/variable name, or a cloud CLI login — where the provider would instead issue short-lived credentials against the runner's OIDC token.",
+			DocURL:          "/rules/cicd-sec-2-cloud-credentials",
+			Frameworks:      []string{FrameworkOWASP},
+			// Login-action and env-name detection is name-exact; the
+			// script-command half is a pattern match, and stamps MEDIUM
+			// per finding.
+			DefaultConfidence: ConfidenceHigh,
 		},
 		{
 			ID:              RuleUnpinnedAction,
@@ -391,6 +452,16 @@ func ruleCatalog() []RuleSpec {
 			DefaultConfidence: ConfidenceMedium,
 		},
 		{
+			ID:              RuleEnvExfil,
+			Category:        "CICD-SEC-6",
+			Title:           "Run step dumps the environment or echoes a CI token",
+			DefaultSeverity: SeverityHigh,
+			Surface:         SurfaceWorkflow,
+			Description:     "Flags the two primitives a poisoned or malicious step uses to get secrets off a runner: printing the whole environment (printenv, bare env, set |, /proc/self/environ) and echoing a run-scoped CI token (GITHUB_TOKEN and siblings) to the log or to a step output. Encoded variants are covered because the matcher anchors on the primitive at the head of the pipe.",
+			DocURL:          "/rules/cicd-sec-6-env-exfil",
+			Frameworks:      []string{FrameworkOWASP},
+		},
+		{
 			ID:              RuleDebugLoggingEnabled,
 			Category:        "CICD-SEC-7",
 			Title:           "Actions debug logging enabled in workflow",
@@ -401,6 +472,19 @@ func ruleCatalog() []RuleSpec {
 			Frameworks:      []string{FrameworkOWASP},
 		},
 		{
+			ID:              RuleArtifactExposure,
+			Category:        "CICD-SEC-7",
+			Title:           "Build artifact published without a retention cap",
+			DefaultSeverity: SeverityMedium,
+			Surface:         SurfaceWorkflow,
+			Description:     "Flags actions/upload-artifact steps with no retention-days (or one above 90) in a workflow that handles secrets or publishes a release, or whose uploaded path names a credential. An artifact is downloadable by anyone with repository read access for the whole retention window — everyone, on a public repository.",
+			DocURL:          "/rules/cicd-sec-7-artifact-exposure",
+			Frameworks:      []string{FrameworkOWASP},
+			// Whether an artifact actually carries something sensitive is a
+			// judgement about the workflow, not a property of the file.
+			DefaultConfidence: ConfidenceMedium,
+		},
+		{
 			ID:              RuleRepoDispatchUnfilt,
 			Category:        "CICD-SEC-8",
 			Title:           "repository_dispatch trigger without event-type allowlist",
@@ -409,6 +493,20 @@ func ruleCatalog() []RuleSpec {
 			Description:     "Flags workflows triggered by repository_dispatch without an explicit types: allowlist. Any third-party service holding a token with repo scope can dispatch arbitrary event types and trigger the workflow with attacker-controlled inputs.",
 			DocURL:          "/rules/cicd-sec-8",
 			Frameworks:      []string{FrameworkOWASP},
+		},
+		{
+			ID:              RuleSelfHostedEgress,
+			Category:        "CICD-SEC-8",
+			Title:           "Sensitive job on a self-hosted runner with no declared egress restriction",
+			DefaultSeverity: SeverityMedium,
+			Surface:         SurfaceWorkflow,
+			Platform:        PlatformAny,
+			Description:     "Flags a job on a self-hosted runner that also consumes secrets, runs under pull_request_target, or publishes a release — with no egress policy declared. Self-hosted alone is best-prac-3; this fires only where the combination bites. Satisfied by `step-security/harden-runner` with `egress-policy: block`, or by a `# pipefort: egress-restricted` comment when egress is governed outside the repository.",
+			DocURL:          "/rules/cicd-sec-8-selfhosted-egress",
+			Frameworks:      []string{FrameworkOWASP},
+			// The sensitive-trait test is a heuristic over what a job
+			// touches, not a deterministic property of the file.
+			DefaultConfidence: ConfidenceMedium,
 		},
 		{
 			ID:                RuleDownloadNoChecksum,
@@ -600,6 +698,17 @@ func ruleCatalog() []RuleSpec {
 			Surface:         SurfaceWorkflow,
 			Description:     "Flags deploy/release-shaped workflows without a concurrency: group. Overlapping runs can race on shared caches, artifacts, and deploy targets, producing double-deploys or inconsistent state.",
 			DocURL:          "/rules/best-prac-4-missing-concurrency",
+			Persona:         PersonaPedantic,
+		},
+		{
+			ID:              RuleShellHardening,
+			Category:        "BEST-PRAC-5",
+			Title:           "Multi-command shell step runs without strict mode",
+			DefaultSeverity: SeverityLow,
+			Surface:         SurfaceWorkflow,
+			Platform:        PlatformAny,
+			Description:     "Flags multi-command bash run blocks (GitHub Actions) and multi-command scripts (GitLab CI) that do not enable `set -euo pipefail`. Both runners set -e only, so a failure on the left of a pipe is swallowed and the step passes green, and an unset variable expands to the empty string. Single-command steps and non-bash shells are out of scope.",
+			DocURL:          "/rules/best-prac-5-shell-hardening",
 			Persona:         PersonaPedantic,
 		},
 		{

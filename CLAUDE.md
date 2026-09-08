@@ -3,6 +3,12 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with
 code in this repository.
 
+> **Audience split.** This file is for agents working **on** this codebase.
+> [`AGENTS.md`](./AGENTS.md) is the consumer-facing guide for agents helping someone
+> **adopt** Pipefort (install, CLI/library reference, configuration, troubleshooting);
+> [`llms.txt`](./llms.txt) is its machine-readable index. Keep both in sync when the
+> CLI surface, an output format, or an exported `pkg/scanner` symbol changes.
+
 Pipefort scans CI/CD pipelines (GitHub Actions and GitLab CI) for the OWASP
 Top 10 CI/CD security risks. This repository is the **open-source CLI and scan
 engine**.

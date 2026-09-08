@@ -54,6 +54,15 @@ func fixGitLabBytes(content []byte, findings []Finding) ([]byte, int, error) {
 				count++
 				modified = true
 			}
+		case RuleShellHardening:
+			// f.Line/Column point at the job key node; insert strict mode as
+			// the first entry of that job's script: sequence.
+			if jobNode := jobByIDAt(root, f.Line, f.Column); jobNode != nil {
+				if fixGitLabShellHardening(jobNode) {
+					count++
+					modified = true
+				}
+			}
 		case RuleGitLabMissingTimeout:
 			// f.Line/Column point at the job key node; inject a sibling
 			// `timeout: 30m` entry into the job mapping if absent.

@@ -163,11 +163,20 @@ type attestationsResponse struct {
 
 // Verify checks one artifact's attestation and reports the verdict.
 func (g *GitHubProvenanceVerifier) Verify(ctx context.Context, a ReleaseArtifact) (ProvenanceResult, error) {
-	bundles, err := g.fetchBundles(ctx, a)
+	bundles, unreadable, err := g.fetchBundles(ctx, a)
 	if err != nil {
 		return ProvenanceResult{}, err
 	}
 	if len(bundles) == 0 {
+		if unreadable {
+			// GitHub says attestations exist; we just could not read them.
+			// Reporting that as ProvenanceMissing would turn our own transport
+			// failure into a HIGH finding accusing the release of shipping
+			// unattested assets. An error instead records the artifact as
+			// `skipped`, which is what actually happened.
+			return ProvenanceResult{}, fmt.Errorf(
+				"github: attestations exist for %s but none could be retrieved", a.Digest)
+		}
 		return ProvenanceResult{State: ProvenanceMissing}, nil
 	}
 
@@ -259,48 +268,60 @@ func provenanceResultFrom(res *verify.VerificationResult) ProvenanceResult {
 // re-tagged release, each add an attestation. Checking only the first would
 // report "does not verify" — a HIGH finding whose text says an unverifiable
 // attestation is worse than none — while a valid one sat behind it.
-func (g *GitHubProvenanceVerifier) fetchBundles(ctx context.Context, a ReleaseArtifact) ([][]byte, error) {
+//
+// The second return value distinguishes the two ways of coming back
+// empty-handed: GitHub holding no attestation at all (false), versus GitHub
+// listing attestations whose bundles we could not retrieve (true). Collapsing
+// those into one produces a HIGH "no attestation" accusation out of our own
+// transport failure — "we could not look" reading as "there is nothing there".
+func (g *GitHubProvenanceVerifier) fetchBundles(ctx context.Context, a ReleaseArtifact) ([][]byte, bool, error) {
 	path := fmt.Sprintf("/repos/%s/%s/attestations/%s?predicate_type=%s",
 		a.Owner, a.Repo, url.PathEscape(a.Digest), url.QueryEscape(provenancePredicateType))
 
 	resp, err := g.get(ctx, path)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
+		return nil, false, nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("github: attestations for %s: %s", a.Digest, resp.Status)
+		return nil, false, fmt.Errorf("github: attestations for %s: %s", a.Digest, resp.Status)
 	}
 
 	var out attestationsResponse
 	if err := json.NewDecoder(io.LimitReader(resp.Body, 16<<20)).Decode(&out); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if len(out.Attestations) == 0 {
-		return nil, nil
+		return nil, false, nil
 	}
 
 	var bundles [][]byte
+	var unreadable bool
 	for _, at := range out.Attestations {
 		if len(at.Bundle) > 0 && string(at.Bundle) != "null" {
 			bundles = append(bundles, at.Bundle)
 			continue
 		}
 		if at.BundleURL == "" {
+			// Listed, but with nothing to read it from.
+			unreadable = true
 			continue
 		}
 		raw, err := g.fetchBundleURL(ctx, at.BundleURL)
 		if err != nil {
-			// One unreachable bundle must not hide a sibling that verifies.
+			// One unreachable bundle must not hide a sibling that verifies,
+			// so keep going — but remember that this attestation exists and
+			// went unread.
+			unreadable = true
 			continue
 		}
 		bundles = append(bundles, raw)
 	}
-	return bundles, nil
+	return bundles, unreadable, nil
 }
 
 // fetchBundleURL retrieves a bundle served indirectly via bundle_url.
@@ -377,11 +398,34 @@ func looksLikeJSON(body []byte) bool {
 // metadata into a cache directory. A verifier is built per request, so
 // per-verifier resolution meant every request paid for both walks — and
 // concurrent requests wrote the same cache directory at the same time.
-var (
-	trustOnce sync.Once
-	trustRoot root.TrustedMaterial
-	trustErr  error
-)
+//
+// Only SUCCESS is memoized. A sync.Once would also cache the failure, and in
+// the long-running hosted API — a verifier per request — one transient TUF
+// outage would then disable verification for the lifetime of the process.
+// Because an unresolvable trust root is recorded as `skipped` rather than as a
+// finding, that failure would be entirely silent.
+type trustCache struct {
+	mu       sync.Mutex
+	material root.TrustedMaterial
+}
+
+// get returns the memoized trust material, calling load at most once
+// successfully. A failing load is returned to the caller and retried next time.
+func (c *trustCache) get(load func() (root.TrustedMaterial, error)) (root.TrustedMaterial, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.material != nil {
+		return c.material, nil
+	}
+	material, err := load()
+	if err != nil {
+		return nil, err
+	}
+	c.material = material
+	return material, nil
+}
+
+var processTrust trustCache
 
 // trustedMaterial resolves the Sigstore trust roots.
 //
@@ -393,29 +437,30 @@ func (g *GitHubProvenanceVerifier) trustedMaterial() (root.TrustedMaterial, erro
 	if g.TrustedMaterial != nil {
 		return g.TrustedMaterial, nil
 	}
-	trustOnce.Do(func() {
-		var collection root.TrustedMaterialCollection
+	return processTrust.get(liveTrustedMaterial)
+}
 
-		publicGood, err := root.NewLiveTrustedRoot(tufOptions(tuf.DefaultOptions(), "sigstore"))
-		if err != nil {
-			trustErr = fmt.Errorf("sigstore public-good trust root: %w", err)
-			return
-		}
-		collection = append(collection, publicGood)
+// liveTrustedMaterial walks both Sigstore TUF repositories.
+func liveTrustedMaterial() (root.TrustedMaterial, error) {
+	var collection root.TrustedMaterialCollection
 
-		ghOpts := tuf.DefaultOptions()
-		ghOpts.Root = githubTUFRoot
-		ghOpts.RepositoryBaseURL = githubTUFMirror
-		if ghRoot, err := root.NewLiveTrustedRoot(tufOptions(ghOpts, "github")); err == nil {
-			collection = append(collection, ghRoot)
-		}
-		// A GitHub-instance failure is not fatal: public-repo attestations,
-		// the overwhelming majority, still verify. Private-repo ones will
-		// report as unverifiable, which is honest.
+	publicGood, err := root.NewLiveTrustedRoot(tufOptions(tuf.DefaultOptions(), "sigstore"))
+	if err != nil {
+		return nil, fmt.Errorf("sigstore public-good trust root: %w", err)
+	}
+	collection = append(collection, publicGood)
 
-		trustRoot = collection
-	})
-	return trustRoot, trustErr
+	ghOpts := tuf.DefaultOptions()
+	ghOpts.Root = githubTUFRoot
+	ghOpts.RepositoryBaseURL = githubTUFMirror
+	if ghRoot, err := root.NewLiveTrustedRoot(tufOptions(ghOpts, "github")); err == nil {
+		collection = append(collection, ghRoot)
+	}
+	// A GitHub-instance failure is not fatal: public-repo attestations, the
+	// overwhelming majority, still verify. Private-repo ones will report as
+	// unverifiable, which is honest.
+
+	return collection, nil
 }
 
 // tufOptions points the TUF cache at a writable temp directory. The default is

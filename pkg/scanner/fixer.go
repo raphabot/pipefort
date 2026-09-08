@@ -128,6 +128,11 @@ func fixGitHubBytes(content []byte, findings []Finding) ([]byte, int, error) {
 					fixesCount++
 					modified = true
 				}
+			case RulePRTargetDualTrigger:
+				if fixPRTargetDualTrigger(rootNode, f) {
+					fixesCount++
+					modified = true
+				}
 			case RuleUnsoundCondition:
 				ifNode := findNodeByPosition(rootNode, f.Line, f.Column)
 				if ifNode != nil && ifNode.Kind == yaml.ScalarNode && fixUnsoundCondition(ifNode) {
@@ -159,6 +164,12 @@ func fixGitHubBytes(content []byte, findings []Finding) ([]byte, int, error) {
 						}
 					}
 				}
+			}
+
+		case "CICD-SEC-2": // Inadequate IAM — dispatch on rule.
+			if f.RuleID == RuleCloudStaticCredentials && fixCloudStaticCredentials(rootNode, f) {
+				fixesCount++
+				modified = true
 			}
 
 		case "CICD-SEC-3": // Unpinned Action
@@ -209,6 +220,12 @@ func fixGitHubBytes(content []byte, findings []Finding) ([]byte, int, error) {
 			fixesCount++
 			modified = true
 
+		case "BEST-PRAC-5": // Shell hardening — prepend strict mode
+			if fixShellHardening(rootNode, f) {
+				fixesCount++
+				modified = true
+			}
+
 		case "BEST-PRAC-4": // Missing concurrency guard
 			if _, c, _ := findMapKey(rootNode, "concurrency"); c == nil {
 				group := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "${{ github.workflow }}-${{ github.ref }}"}
@@ -222,10 +239,22 @@ func fixGitHubBytes(content []byte, findings []Finding) ([]byte, int, error) {
 				modified = true
 			}
 
-		case "CICD-SEC-7": // Insecure System Configuration - debug logging
-			if removeMapEntry(rootNode, f.Line, f.Column) {
-				fixesCount++
-				modified = true
+		case "CICD-SEC-7": // Insecure System Configuration — dispatch on rule.
+			// Two rules share this category and their fixers are opposites:
+			// one DELETES the entry it is pointed at, the other ADDS one.
+			// Dispatching on the category alone would let the debug fixer
+			// delete an upload-artifact input.
+			switch f.RuleID {
+			case RuleDebugLoggingEnabled:
+				if removeMapEntry(rootNode, f.Line, f.Column) {
+					fixesCount++
+					modified = true
+				}
+			case RuleArtifactExposure:
+				if fixArtifactExposure(rootNode, f) {
+					fixesCount++
+					modified = true
+				}
 			}
 
 		case "CICD-SEC-10": // Insufficient Logging & Visibility - continue-on-error

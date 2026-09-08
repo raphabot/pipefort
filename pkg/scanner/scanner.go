@@ -26,9 +26,15 @@ func ScanFile(filePath string) ([]Finding, error) {
 func ScanBytes(name string, content []byte) ([]Finding, error) {
 	filePath := name
 
+	// Runs on the raw document, before any platform dispatch: both hazards
+	// live in structure that decoding into WorkflowNode throws away, and both
+	// are platform-independent.
+	yamlFindings := CheckYAMLHardening(filePath, content)
+
 	if IsGitLabCIPath(filePath) {
 		glFindings, err := scanGitLabBytes(filePath, content)
-		return applyInlineIgnores(StampConfidence(glFindings), content), err
+		glFindings = append(yamlFindings, glFindings...)
+		return dropFileLevelEgressAck(applyInlineIgnores(StampConfidence(glFindings), content), content), err
 	}
 
 	var workflow WorkflowNode
@@ -61,7 +67,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	}
 
 	// Run all checks
-	var findings []Finding
+	findings := yamlFindings
 	findings = append(findings, CheckPPE(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckPBAC(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckUnpinnedActions(filePath, &workflow, jobs)...)
@@ -75,15 +81,22 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	// Extended OWASP coverage (owasp_extended_rules.go) — CICD-SEC-2/6/7/8/9/10.
 	findings = append(findings, CheckLongLivedPAT(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckSecretInRunOutput(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckEnvExfiltration(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckDebugLoggingEnabled(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckArtifactExposure(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckRepoDispatchUnfiltered(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckSelfHostedEgress(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckDownloadWithoutChecksum(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckContinueOnErrorJob(filePath, &workflow, jobs)...)
+
+	// Cloud identity (cloud_credentials.go) — CICD-SEC-2.
+	findings = append(findings, CheckCloudCredentials(filePath, &workflow, jobs)...)
 
 	// Privileged-trigger hardening (rules.go) — CICD-SEC-1/4.
 	findings = append(findings, CheckWorkflowRunArtifactPoisoning(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckCheckoutPersistCredentials(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckSecretsInheritPRTarget(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckPRTargetDualTrigger(filePath, &workflow, jobs)...)
 
 	// Injection-depth checks (injection_rules.go) — CICD-SEC-4/1.
 	findings = append(findings, CheckGitHubEnvInjection(filePath, &workflow, jobs)...)
@@ -98,6 +111,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	findings = append(findings, CheckOverprovisionedSecrets(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckUseTrustedPublishing(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckMissingConcurrency(filePath, &workflow, jobs)...)
+	findings = append(findings, CheckShellHardening(filePath, &workflow, jobs)...)
 
 	// SLSA Build-track checks (slsa_rules.go).
 	findings = append(findings, CheckSLSAProvenance(filePath, &workflow, jobs)...)
@@ -107,7 +121,7 @@ func ScanBytes(name string, content []byte) ([]Finding, error) {
 	findings = append(findings, CheckSLSACachePoisoning(filePath, &workflow, jobs)...)
 	findings = append(findings, CheckSLSAVerifyStep(filePath, &workflow, jobs)...)
 
-	return applyInlineIgnores(StampConfidence(findings), content), nil
+	return dropFileLevelEgressAck(applyInlineIgnores(StampConfidence(findings), content), content), nil
 }
 
 // ScanDir walks a directory looking for CI/CD configs to scan:

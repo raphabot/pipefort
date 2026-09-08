@@ -67,6 +67,9 @@ func scanGitLabBytes(filePath string, content []byte) ([]Finding, error) {
 	// extract from the GitLab job tree.
 	out = append(out, checkGitLabPipeToShell(filePath, jobs)...)
 	out = append(out, checkGitLabDownloadNoChecksum(filePath, jobs)...)
+	out = append(out, checkGitLabCloudCredentials(filePath, jobs, vars)...)
+	out = append(out, checkGitLabShellHardening(filePath, jobs, gitlabDefaultBeforeScript(root))...)
+	out = append(out, checkGitLabSelfHostedEgress(filePath, jobs)...)
 
 	return out, nil
 }
@@ -804,4 +807,14 @@ func allScripts(job glJob) []scriptLine {
 	out = append(out, job.Script...)
 	out = append(out, job.After...)
 	return out
+}
+
+// gitlabDefaultBeforeScript returns the top-level `default: before_script:`
+// lines, which every job inherits unless it declares its own.
+func gitlabDefaultBeforeScript(root *yaml.Node) []scriptLine {
+	def := mappingValueByKey(root, "default")
+	if def == nil {
+		return nil
+	}
+	return extractScriptLines(mappingValueByKey(def, "before_script"))
 }

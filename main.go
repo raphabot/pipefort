@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -45,6 +47,28 @@ var (
 	noConfig       bool
 )
 
+// version is the CLI's release version. GoReleaser overrides it at link time
+// with -ldflags "-X main.version=<tag>" (see .goreleaser.yaml). Builds that
+// skip that flag — `go build`, `go run`, `go install ...@latest` — fall back to
+// resolvedVersion's module metadata.
+var version = ""
+
+// resolvedVersion reports the version to print for `--version` / `version`.
+// Precedence: the linker-injected value, then the module version recorded in
+// the binary (populated for `go install github.com/raphabot/pipefort@vX.Y.Z`),
+// then "dev" for a plain local build where neither is available.
+func resolvedVersion() string {
+	if version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if v := info.Main.Version; v != "" && v != "(devel)" {
+			return v
+		}
+	}
+	return "dev"
+}
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "pipefort",
@@ -78,6 +102,21 @@ the OWASP Top 10 CI/CD Security Risks.`,
 	rootCmd.Flags().StringVar(&gitlabHost, "gitlab-host", "gitlab.com", "GitLab host for project-settings audits when scanning a local --path/--file. Ignored when --git carries an https URL (the host is parsed from the URL).")
 	rootCmd.Flags().StringVar(&configPath, "config", "", "Path to a .pipefort.yml config file. Defaults to discovering .pipefort.yml (or .github/pipefort.yml) in the scan root. Provides rule enable/disable, severity overrides, per-file/line ignores, and default ruleset/persona/min-confidence.")
 	rootCmd.Flags().BoolVar(&noConfig, "no-config", false, "Ignore any .pipefort.yml config file for this run.")
+
+	// `pipefort --version`. The MCP server reports the same string so a client
+	// sees the real build rather than a hardcoded constant.
+	rootCmd.Version = resolvedVersion()
+	rootCmd.SetVersionTemplate("pipefort {{.Version}}\n")
+	pipefortmcp.Version = rootCmd.Version
+
+	// `pipefort version` — the same output under the subcommand spelling.
+	rootCmd.AddCommand(&cobra.Command{
+		Use:   "version",
+		Short: "Print the pipefort version",
+		Run: func(cmd *cobra.Command, _ []string) {
+			fmt.Fprintf(cmd.OutOrStdout(), "pipefort %s\n", resolvedVersion())
+		},
+	})
 
 	rootCmd.AddCommand(&cobra.Command{
 		Use:   "mcp",
@@ -321,7 +360,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 				// The findings deliberately carry no per-asset detail — their
 				// fingerprints have to survive the next release — so print the
 				// evidence here, which is the only place a CLI user can see it.
-				printProvenanceEvidence(records)
+				printProvenanceEvidence(provenanceEvidenceWriter(outputFormat), records)
 			}
 			findings = append(findings, provFindings...)
 		}
@@ -951,9 +990,25 @@ func shouldFail(findings []scanner.Finding, threshold string) bool {
 	return false
 }
 
+// provenanceEvidenceWriter picks the stream the evidence table belongs on.
+//
+// The table is human-readable text, and `-o json` / `-o sarif` own stdout: a
+// table printed ahead of them yields a file that neither `jq` nor
+// github/codeql-action/upload-sarif can parse. Under a machine format the
+// evidence goes to stderr, where it is still visible in CI logs without
+// corrupting the artifact.
+func provenanceEvidenceWriter(format string) *os.File {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "json", "sarif":
+		return os.Stderr
+	default:
+		return os.Stdout
+	}
+}
+
 // printProvenanceEvidence writes the per-asset verification result, worst first.
 // The SaaS keeps this in a table; on the command line it is this or nothing.
-func printProvenanceEvidence(records []scanner.ProvenanceRecord) {
+func printProvenanceEvidence(w io.Writer, records []scanner.ProvenanceRecord) {
 	rank := map[scanner.ProvenanceState]int{
 		scanner.ProvenanceForeignSigner: 0,
 		scanner.ProvenanceUnverifiable:  1,
@@ -969,7 +1024,7 @@ func printProvenanceEvidence(records []scanner.ProvenanceRecord) {
 		return sorted[i].Artifact.AssetName < sorted[j].Artifact.AssetName
 	})
 
-	fmt.Printf("\n--- RELEASE PROVENANCE (%s) ---\n", sorted[0].Artifact.ReleaseTag)
+	fmt.Fprintf(w, "\n--- RELEASE PROVENANCE (%s) ---\n", sorted[0].Artifact.ReleaseTag)
 	for _, r := range sorted {
 		detail := r.Result.SignerWorkflow
 		if r.Result.Reason != "" {
@@ -978,6 +1033,6 @@ func printProvenanceEvidence(records []scanner.ProvenanceRecord) {
 		if detail != "" {
 			detail = "  " + detail
 		}
-		fmt.Printf("  %-17s %s%s\n", r.Result.State, r.Artifact.AssetName, detail)
+		fmt.Fprintf(w, "  %-17s %s%s\n", r.Result.State, r.Artifact.AssetName, detail)
 	}
 }

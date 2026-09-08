@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/raphabot/pipefort/pkg/scanner"
@@ -158,4 +160,80 @@ func TestLoadRepoConfig(t *testing.T) {
 	})
 
 	var _ = scanner.RepoConfig{} // keep the scanner import referenced
+}
+
+func TestResolvedVersion(t *testing.T) {
+	original := version
+	t.Cleanup(func() { version = original })
+
+	// GoReleaser path: -ldflags "-X main.version=..." wins outright.
+	version = "v1.2.3"
+	if got := resolvedVersion(); got != "v1.2.3" {
+		t.Fatalf("ldflags version: got %q, want %q", got, "v1.2.3")
+	}
+
+	// Unstamped build: the test binary carries no usable module version, so the
+	// resolver falls through to the "dev" sentinel rather than printing empty.
+	version = ""
+	if got := resolvedVersion(); got == "" {
+		t.Fatal("unstamped build: resolvedVersion returned an empty string")
+	}
+	if got := resolvedVersion(); got == "(devel)" {
+		t.Fatal("unstamped build: resolvedVersion leaked Go's \"(devel)\" placeholder")
+	}
+}
+
+// The release-provenance evidence table is human-readable text. Writing it to
+// stdout ahead of `-o json` / `-o sarif` output produces a file that neither
+// `jq` nor github/codeql-action/upload-sarif can parse — and
+// `--verify-attestations -o sarif` is exactly the CI shape this feature is for.
+// Machine formats own stdout; the table goes to stderr.
+func TestProvenanceEvidenceWriterKeepsMachineOutputClean(t *testing.T) {
+	for _, tc := range []struct {
+		format string
+		want   *os.File
+	}{
+		{"console", os.Stdout},
+		{"", os.Stdout},
+		{"json", os.Stderr},
+		{"JSON", os.Stderr},
+		{"sarif", os.Stderr},
+	} {
+		if got := provenanceEvidenceWriter(tc.format); got != tc.want {
+			t.Errorf("provenanceEvidenceWriter(%q) = %v, want %v", tc.format, got, tc.want)
+		}
+	}
+}
+
+// Worst verdict first, then by asset name, so the row that matters is the row
+// a reader sees.
+func TestPrintProvenanceEvidenceOrdersWorstFirst(t *testing.T) {
+	rec := func(name string, state scanner.ProvenanceState) scanner.ProvenanceRecord {
+		return scanner.ProvenanceRecord{
+			Artifact: scanner.ReleaseArtifact{ReleaseTag: "v1.4.0", AssetName: name},
+			Result:   scanner.ProvenanceResult{State: state},
+		}
+	}
+	var buf bytes.Buffer
+	printProvenanceEvidence(&buf, []scanner.ProvenanceRecord{
+		rec("b-verified", scanner.ProvenanceVerified),
+		rec("c-skipped", scanner.ProvenanceSkipped),
+		rec("a-foreign", scanner.ProvenanceForeignSigner),
+		rec("d-missing", scanner.ProvenanceMissing),
+		rec("e-unverifiable", scanner.ProvenanceUnverifiable),
+	})
+
+	out := buf.String()
+	if !strings.Contains(out, "v1.4.0") {
+		t.Errorf("the header should name the release tag, got %q", out)
+	}
+	want := []string{"a-foreign", "e-unverifiable", "d-missing", "c-skipped", "b-verified"}
+	var at int
+	for _, name := range want {
+		i := strings.Index(out[at:], name)
+		if i < 0 {
+			t.Fatalf("%q out of order (or absent) in:\n%s", name, out)
+		}
+		at += i
+	}
 }

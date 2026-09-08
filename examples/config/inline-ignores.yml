@@ -1,0 +1,53 @@
+# Inline suppressions — silence one finding where it sits, with no config file.
+#
+# Copy from:    this file's comment syntax into your own workflow YAML
+# Requires:     nothing
+# Env vars:     none
+# Result:       the suppressed findings disappear from every consumer (CLI, MCP
+#               server, the hosted scanner, and the fixers' post-fix re-scan),
+#               because suppression is applied inside scanner.ScanBytes.
+#
+# Syntax:
+#   # pipefort: ignore                       → suppress EVERY rule at the target line
+#   # pipefort: ignore[rule-id]              → suppress one rule
+#   # pipefort: ignore[rule-a,rule-b]        → suppress several, comma-separated
+#
+# Placement is what decides the target line:
+#   - a TRAILING comment (code before the `#`) suppresses ITS OWN line
+#   - a STANDALONE comment (only whitespace, or a bare `-`, before the `#`)
+#     suppresses the line BELOW it
+#
+# This is independent of the file globs in .pipefort.yml — the two can be mixed.
+#
+# To verify, run:  pipefort -f examples/config/inline-ignores.yml
+
+name: Inline suppression demo
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # Trailing form: targets this same line.
+      - uses: actions/checkout@v4  # pipefort: ignore[cicd-sec-3-unpinned-action]
+
+      # Standalone form: targets the `- uses:` line immediately below it.
+      # pipefort: ignore[cicd-sec-3-unpinned-action]
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      # Several rules at once.
+      # pipefort: ignore[best-prac-1-pipe-to-shell,cicd-sec-9-download-without-checksum]
+      - run: curl -sSL https://example.com/install.sh | bash
+
+      # Bare form: suppresses every rule at this line. Use sparingly — prefer
+      # naming the rule so a future rule doesn't get silently swallowed too.
+      - run: echo "unreviewed"  # pipefort: ignore
