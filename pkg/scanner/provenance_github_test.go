@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -326,5 +327,133 @@ func TestSameHost(t *testing.T) {
 		if got := sameHost(tc.a, tc.b); got != tc.want {
 			t.Errorf("sameHost(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
 		}
+	}
+}
+
+// An attestation that GitHub lists but whose bundle we fail to retrieve must
+// never read as "this artifact has no attestation".
+//
+// ProvenanceMissing drives a HIGH finding accusing the release of shipping
+// unattested assets. Reaching it because our own bundle fetch 500'd — or
+// because the payload could not be decompressed — is the same fail-open the
+// rest of this pass is built to avoid, only inverted: "we could not look"
+// rendering as "there is nothing there". A retrieval failure is a transport
+// error, which the audit records as `skipped`.
+func TestVerifyBundleFetchFailureIsNotReportedAsMissing(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		handler http.HandlerFunc
+	}{
+		{
+			name: "bundle_url is unreachable",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				http.Error(w, "boom", http.StatusInternalServerError)
+			},
+		},
+		{
+			name: "bundle payload cannot be decoded",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/x-snappy")
+				w.Write([]byte{0xff, 0xfe, 0xfd})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			bundleSrv := httptest.NewServer(tc.handler)
+			t.Cleanup(bundleSrv.Close)
+
+			v := newProvenanceServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				body, _ := json.Marshal(map[string]any{
+					"attestations": []map[string]any{{"bundle": nil, "bundle_url": bundleSrv.URL + "/bundle"}},
+				})
+				w.Write(body)
+			})
+
+			res, err := v.Verify(context.Background(), asset("widget.tar.gz"))
+			if err == nil {
+				t.Fatalf("want a transport error, got state %q", res.State)
+			}
+			if res.State == ProvenanceMissing {
+				t.Errorf("an unretrievable bundle must not report as %q", ProvenanceMissing)
+			}
+		})
+	}
+}
+
+// One unreachable bundle must still not hide a sibling that verifies: the
+// error is only raised when NOTHING could be retrieved.
+func TestVerifyOneUnreachableBundleDoesNotHideAnother(t *testing.T) {
+	bad := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	t.Cleanup(bad.Close)
+	good := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"mediaType":"nonsense"}`)
+	}))
+	t.Cleanup(good.Close)
+
+	v := newProvenanceServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		body, _ := json.Marshal(map[string]any{"attestations": []map[string]any{
+			{"bundle": nil, "bundle_url": bad.URL + "/bundle"},
+			{"bundle": nil, "bundle_url": good.URL + "/bundle"},
+		}})
+		w.Write(body)
+	})
+
+	res, err := v.Verify(context.Background(), asset("widget.tar.gz"))
+	if err != nil {
+		t.Fatalf("a retrievable sibling must carry the verdict, got error %v", err)
+	}
+	// The retrievable bundle is well-formed JSON but not a real Sigstore
+	// bundle, so it lands on unverifiable — proving it was the one judged.
+	if res.State != ProvenanceUnverifiable {
+		t.Errorf("state = %q, want %q", res.State, ProvenanceUnverifiable)
+	}
+}
+
+// An attestation entry carrying neither an inline bundle nor a bundle_url is
+// evidence we cannot read, not evidence of absence.
+func TestVerifyAttestationWithNoBundleAtAllIsNotMissing(t *testing.T) {
+	v := newProvenanceServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"attestations":[{"bundle":null,"bundle_url":""}]}`)
+	})
+	res, err := v.Verify(context.Background(), asset("widget.tar.gz"))
+	if err == nil {
+		t.Fatalf("want an error, got state %q", res.State)
+	}
+	if res.State == ProvenanceMissing {
+		t.Errorf("an unreadable attestation must not report as %q", ProvenanceMissing)
+	}
+}
+
+// The trust roots are memoized for the process, but a FAILURE must not be.
+//
+// A sync.Once caches whatever the first call produced. In the long-running
+// hosted API — which builds a verifier per request — one transient TUF outage
+// would then disable attestation verification for the lifetime of the process,
+// and because an unresolvable trust root is recorded as `skipped`, the feature
+// would silently produce nothing forever.
+func TestTrustCacheDoesNotMemoizeFailure(t *testing.T) {
+	var c trustCache
+	var calls int
+	load := func() (root.TrustedMaterial, error) {
+		calls++
+		if calls == 1 {
+			return nil, errors.New("tuf mirror unreachable")
+		}
+		return &root.BaseTrustedMaterial{}, nil
+	}
+
+	if _, err := c.get(load); err == nil {
+		t.Fatal("want the first failure returned, got nil")
+	}
+	if _, err := c.get(load); err != nil {
+		t.Fatalf("a failed resolution must be retried, got %v", err)
+	}
+	if _, err := c.get(load); err != nil {
+		t.Fatalf("third call: %v", err)
+	}
+	if calls != 2 {
+		t.Errorf("load called %d times, want 2 (one failure, one success then cached)", calls)
 	}
 }

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -359,7 +360,7 @@ func runScan(cmd *cobra.Command, args []string) error {
 				// The findings deliberately carry no per-asset detail — their
 				// fingerprints have to survive the next release — so print the
 				// evidence here, which is the only place a CLI user can see it.
-				printProvenanceEvidence(records)
+				printProvenanceEvidence(provenanceEvidenceWriter(outputFormat), records)
 			}
 			findings = append(findings, provFindings...)
 		}
@@ -989,9 +990,25 @@ func shouldFail(findings []scanner.Finding, threshold string) bool {
 	return false
 }
 
+// provenanceEvidenceWriter picks the stream the evidence table belongs on.
+//
+// The table is human-readable text, and `-o json` / `-o sarif` own stdout: a
+// table printed ahead of them yields a file that neither `jq` nor
+// github/codeql-action/upload-sarif can parse. Under a machine format the
+// evidence goes to stderr, where it is still visible in CI logs without
+// corrupting the artifact.
+func provenanceEvidenceWriter(format string) *os.File {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "json", "sarif":
+		return os.Stderr
+	default:
+		return os.Stdout
+	}
+}
+
 // printProvenanceEvidence writes the per-asset verification result, worst first.
 // The SaaS keeps this in a table; on the command line it is this or nothing.
-func printProvenanceEvidence(records []scanner.ProvenanceRecord) {
+func printProvenanceEvidence(w io.Writer, records []scanner.ProvenanceRecord) {
 	rank := map[scanner.ProvenanceState]int{
 		scanner.ProvenanceForeignSigner: 0,
 		scanner.ProvenanceUnverifiable:  1,
@@ -1007,7 +1024,7 @@ func printProvenanceEvidence(records []scanner.ProvenanceRecord) {
 		return sorted[i].Artifact.AssetName < sorted[j].Artifact.AssetName
 	})
 
-	fmt.Printf("\n--- RELEASE PROVENANCE (%s) ---\n", sorted[0].Artifact.ReleaseTag)
+	fmt.Fprintf(w, "\n--- RELEASE PROVENANCE (%s) ---\n", sorted[0].Artifact.ReleaseTag)
 	for _, r := range sorted {
 		detail := r.Result.SignerWorkflow
 		if r.Result.Reason != "" {
@@ -1016,6 +1033,6 @@ func printProvenanceEvidence(records []scanner.ProvenanceRecord) {
 		if detail != "" {
 			detail = "  " + detail
 		}
-		fmt.Printf("  %-17s %s%s\n", r.Result.State, r.Artifact.AssetName, detail)
+		fmt.Fprintf(w, "  %-17s %s%s\n", r.Result.State, r.Artifact.AssetName, detail)
 	}
 }
