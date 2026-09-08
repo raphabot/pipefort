@@ -159,3 +159,24 @@ func TestLoadRepoConfig(t *testing.T) {
 
 	var _ = scanner.RepoConfig{} // keep the scanner import referenced
 }
+
+func TestResolvedVersion(t *testing.T) {
+	original := version
+	t.Cleanup(func() { version = original })
+
+	// GoReleaser path: -ldflags "-X main.version=..." wins outright.
+	version = "v1.2.3"
+	if got := resolvedVersion(); got != "v1.2.3" {
+		t.Fatalf("ldflags version: got %q, want %q", got, "v1.2.3")
+	}
+
+	// Unstamped build: the test binary carries no usable module version, so the
+	// resolver falls through to the "dev" sentinel rather than printing empty.
+	version = ""
+	if got := resolvedVersion(); got == "" {
+		t.Fatal("unstamped build: resolvedVersion returned an empty string")
+	}
+	if got := resolvedVersion(); got == "(devel)" {
+		t.Fatal("unstamped build: resolvedVersion leaked Go's \"(devel)\" placeholder")
+	}
+}

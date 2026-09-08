@@ -1,0 +1,56 @@
+# Pipefort → GitHub code scanning (the canonical setup).
+#
+# Copy to:      .github/workflows/pipefort.yml
+# Requires:     nothing to install — `uses:` pulls the action
+# Env vars:     none (the action defaults github-token to ${{ github.token }},
+#               which enables the online supply-chain pin audits)
+# Result:       the job fails when a finding is >= MEDIUM, and findings appear
+#               under Security → Code scanning alerts either way
+#
+# Note: raphabot/pipefort is a Docker action built from source at run time, so
+# the first step in a fresh runner spends ~1-2 min building the image. See
+# ./cli-binary.yml for the faster prebuilt-binary alternative.
+
+name: Pipefort
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  security-events: write   # required by upload-sarif; without it the upload 403s
+
+jobs:
+  pipefort:
+    name: CI/CD pipeline security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: scan
+        uses: raphabot/pipefort@v0.1.7
+        with:
+          path: .
+          ruleset: all       # all | owasp | slsa | slsa-build-l1|l2|l3 | slsa-source-l2|l3|l4
+          fail-on: MEDIUM    # HIGH | MEDIUM | LOW | INFO | NONE
+          output: sarif      # default; writes the file named by sarif-file
+          sarif-file: pipefort.sarif
+          # github-token: ''  # uncomment to keep the scan fully offline
+
+      - name: Upload SARIF
+        if: always()         # upload findings even when the scan failed the build
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif-file }}
+
+# Hardening note: this file uses mutable tag refs (actions/checkout@v4,
+# raphabot/pipefort@v0.1.7, codeql-action/upload-sarif@v4) so it stays readable.
+# Pipefort flags those under cicd-sec-3-unpinned-action — by design, it holds its
+# own examples to the same standard. Pin them for real with:
+#
+#     pipefort -p . --fix
+#
+# which rewrites each `uses:` to a full commit SHA, keeping the original tag as a
+# trailing comment.

@@ -123,3 +123,20 @@ func TestMCPExplainRule(t *testing.T) {
 		t.Error("expected IsError for an unknown rule id")
 	}
 }
+
+// The CLI overwrites Version at startup so an MCP client sees the real build.
+// Guard that NewServer reads the variable rather than baking in a constant.
+func TestMCPServerReportsVersion(t *testing.T) {
+	original := Version
+	t.Cleanup(func() { Version = original })
+
+	Version = "v9.9.9-test"
+	cs, _ := connect(t)
+	got := cs.InitializeResult().ServerInfo
+	if got.Name != "pipefort" {
+		t.Errorf("server name: got %q, want %q", got.Name, "pipefort")
+	}
+	if got.Version != "v9.9.9-test" {
+		t.Errorf("server version: got %q, want %q", got.Version, "v9.9.9-test")
+	}
+}
