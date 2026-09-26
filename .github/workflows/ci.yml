@@ -31,6 +31,11 @@ jobs:
             exit 1
           fi
 
+      - name: Claude hook tests
+        # .claude/hooks guard releases, CI config and main; prove they still
+        # decide correctly.
+        run: .claude/hooks/test.sh
+
       - name: Build
         run: go build ./...
 

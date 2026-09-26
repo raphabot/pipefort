@@ -14,6 +14,9 @@ if [ -n "$unformatted" ]; then
   exit 1
 fi
 
+step "claude hook tests"
+.claude/hooks/test.sh
+
 step "go build"
 go build ./...
 
