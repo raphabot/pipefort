@@ -26,6 +26,12 @@ Use the `sdlc-artifacts` skill. It must list the **true positives** and the
 - **Tests**: table-driven in `pkg/scanner/<topic>_test.go`, with positives,
   negatives (the look-alikes), GitHub **and** GitLab where the platform is
   `PlatformAny`, and a fixer round-trip test.
+- **Corpus cases** in `testdata/corpus/` (see its README): at least one
+  realistic positive (`# expect: <rule-id>`) and one legitimate look-alike
+  (`# expect-none: <rule-id>`), per platform the rule covers. Then run
+  `go test ./pkg/scanner/ -run TestCorpus -update` and review **every** golden
+  diff: a new rule usually adds findings to existing cases too, and each one
+  must be a true positive or explained in the PR.
 - **Offline-first** (ADR 0001): no network on the default path.
 
 ## 3. Sync the consumer docs in this repo

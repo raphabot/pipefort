@@ -1,0 +1,20 @@
+# corpus: positive
+# models: a self-hosted (persistent) runner reachable from fork pull requests
+#   in a public repo -- the PyTorch-style runner-takeover shape.
+# expect: best-prac-3-self-hosted-runners
+name: GPU tests
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gpu:
+    runs-on: [self-hosted, linux, gpu]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - run: pip install -e . && pytest -m gpu

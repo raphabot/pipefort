@@ -1,0 +1,13 @@
+{
+  "case": "gh-github-env-injection",
+  "scan_as": ".github/workflows/gh-github-env-injection.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-4-github-env-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 22,
+      "column": 14
+    }
+  ]
+}

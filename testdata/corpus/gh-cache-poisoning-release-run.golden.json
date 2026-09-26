@@ -1,0 +1,27 @@
+{
+  "case": "gh-cache-poisoning-release-run",
+  "scan_as": ".github/workflows/gh-cache-poisoning-release-run.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-4-cache-poisoning-release",
+      "severity": "MEDIUM",
+      "confidence": "MEDIUM",
+      "line": 27,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-2-use-trusted-publishing",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 36,
+      "column": 14
+    },
+    {
+      "rule_id": "slsa-build-l2-provenance",
+      "severity": "HIGH",
+      "confidence": "MEDIUM",
+      "line": 36,
+      "column": 14
+    }
+  ]
+}

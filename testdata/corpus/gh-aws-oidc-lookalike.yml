@@ -1,0 +1,35 @@
+# corpus: lookalike
+# models: the OIDC version of the same deploy -- no stored keys; id-token
+#   scoped to the one job that needs it.
+# expect-none: cicd-sec-2-cloud-credentials
+# expect-none: cicd-sec-6-hardcoded-secrets
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@ececac1a45f3b08a01d2dd070d28d111c5fe6722 # v4.1.0
+        with:
+          role-to-assume: arn:aws:iam::123456789012:role/site-deploy
+          aws-region: us-east-1
+      - run: aws s3 sync ./site s3://example-site-bucket

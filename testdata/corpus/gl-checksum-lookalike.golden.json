@@ -1,0 +1,13 @@
+{
+  "case": "gl-checksum-lookalike",
+  "scan_as": ".gitlab-ci/gl-checksum-lookalike.yml",
+  "findings": [
+    {
+      "rule_id": "best-prac-5-shell-hardening",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 8,
+      "column": 1
+    }
+  ]
+}

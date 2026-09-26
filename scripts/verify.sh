@@ -14,19 +14,31 @@ if [ -n "$unformatted" ]; then
   exit 1
 fi
 
+step "claude hook tests"
+.claude/hooks/test.sh
+
 step "go build"
 go build ./...
 
 step "go vet"
 go vet ./...
 
-step "go test"
+step "go test (includes the golden corpus, testdata/corpus)"
 go test ./...
 
 step "no-pgx guard (engineering/adr/0002)"
 if go list -deps . | grep jackc/pgx; then
   echo "ERROR: the CLI transitively depends on jackc/pgx."
   exit 1
+fi
+
+step "golangci-lint (new issues vs origin/main, if installed)"
+if command -v golangci-lint >/dev/null 2>&1; then
+  base=origin/main
+  git rev-parse --verify --quiet "$base" >/dev/null || base=main
+  golangci-lint run --new-from-rev="$base" ./...
+else
+  echo "skipped: golangci-lint not installed (CI runs it; brew install golangci-lint)"
 fi
 
 printf '\nverify: all green\n'

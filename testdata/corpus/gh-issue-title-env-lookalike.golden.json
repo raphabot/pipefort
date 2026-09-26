@@ -1,0 +1,20 @@
+{
+  "case": "gh-issue-title-env-lookalike",
+  "scan_as": ".github/workflows/gh-issue-title-env-lookalike.yml",
+  "findings": [
+    {
+      "rule_id": "best-prac-5-shell-hardening",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 29,
+      "column": 14
+    },
+    {
+      "rule_id": "cicd-sec-4-ppe-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 35,
+      "column": 14
+    }
+  ]
+}
