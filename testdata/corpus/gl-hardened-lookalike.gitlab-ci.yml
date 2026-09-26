@@ -1,0 +1,37 @@
+# corpus: lookalike
+# models: a hardened GitLab pipeline -- SHA-pinned include, digest-pinned
+#   image, MR jobs that never re-fetch the source ref, secrets only in
+#   protected CI/CD settings (referenced by name), timeouts, resource_group.
+# expect-none: cicd-sec-3-gl-unpinned-include
+# expect-none: cicd-sec-1-gl-mr-target
+# expect-none: cicd-sec-6-gl-hardcoded-secrets
+# expect-none: cicd-sec-4-gl-shell-injection
+include:
+  - project: platform/ci-templates
+    ref: 3f786850e387550fdab836ed7e6dc881de23001b
+    file: /templates/lint.yml
+  - local: /ci/common.yml
+
+stages: [test, deploy]
+
+default:
+  timeout: 20m
+
+test:
+  stage: test
+  image: golang:1.23@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - go test ./...
+
+deploy:
+  stage: deploy
+  image: golang:1.23@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  resource_group: production
+  environment: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - ./scripts/deploy.sh --token "$DEPLOY_TOKEN"

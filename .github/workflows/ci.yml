@@ -37,8 +37,33 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test
-        run: go test ./...
+      - name: Test (with coverage)
+        # Includes the golden corpus (pkg/scanner/corpus_test.go over
+        # testdata/corpus/), the scanner's offline eval set.
+        shell: bash # -eo pipefail, so a test failure isn't masked by tee
+        run: go test -coverprofile=coverage.out ./... | tee test-output.txt
+
+      - name: Coverage summary and floor
+        # COVERAGE_FLOOR sits a couple of points below the measured total
+        # (71.8% when this gate was added) so small fluctuations don't fail
+        # builds. Raise it as coverage grows. Never lower it to get a PR
+        # through: add tests instead.
+        env:
+          COVERAGE_FLOOR: "70.0"
+        run: |
+          total="$(go tool cover -func=coverage.out | awk '/^total:/ {sub(/%/, "", $NF); print $NF}')"
+          {
+            echo "### Test coverage: ${total}% (floor ${COVERAGE_FLOOR}%)"
+            echo ""
+            echo "| Package | Coverage |"
+            echo "| --- | --- |"
+            awk '$1 == "ok" { for (i = 1; i <= NF; i++) if ($i == "coverage:") print "| " $2 " | " $(i+1) " |" }' test-output.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+          if awk -v t="$total" -v f="$COVERAGE_FLOOR" 'BEGIN { exit !(t + 0 < f + 0) }'; then
+            echo "::error::Total coverage ${total}% is below the floor ${COVERAGE_FLOOR}%."
+            exit 1
+          fi
+          echo "Total coverage ${total}% (floor ${COVERAGE_FLOOR}%)."
 
       - name: No-pgx dependency guard
         # The CLI must never pull in the Postgres driver (a SaaS-only concern).
@@ -50,3 +75,26 @@ jobs:
             exit 1
           fi
           echo "OK: no jackc/pgx in the CLI dependency graph."
+
+  lint:
+    name: golangci-lint (new issues only)
+    runs-on: ubuntu-latest
+    # contents: read (workflow level) is enough: the repo is public, so the
+    # action can read the PR/push diff it needs for only-new-issues.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with:
+          version: v2.14.0
+          # Report only issues introduced by this PR/push. The tree had ~37
+          # pre-existing (mostly errcheck) issues when this job was added;
+          # they don't block, but fix them opportunistically.
+          only-new-issues: true

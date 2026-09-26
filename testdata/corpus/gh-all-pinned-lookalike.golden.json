@@ -1,0 +1,5 @@
+{
+  "case": "gh-all-pinned-lookalike",
+  "scan_as": ".github/workflows/gh-all-pinned-lookalike.yml",
+  "findings": []
+}

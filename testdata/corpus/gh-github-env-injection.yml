@@ -1,0 +1,23 @@
+# corpus: positive
+# models: GITHUB_ENV injection -- an attacker-controlled PR field is written
+#   into $GITHUB_ENV in a privileged workflow, letting the attacker set
+#   variables like LD_PRELOAD or NODE_OPTIONS for later steps.
+# expect: cicd-sec-4-github-env-injection
+name: Stamp build
+
+on:
+  pull_request_target:
+
+permissions:
+  contents: read
+
+jobs:
+  stamp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Export PR title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: echo "PR_TITLE=$TITLE" >> "$GITHUB_ENV"
+      - run: ./scripts/stamp.sh

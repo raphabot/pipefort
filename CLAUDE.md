@@ -29,8 +29,16 @@ engine**.
 ## Commands
 
 - **Verify everything (what CI runs): `scripts/verify.sh`**: gofmt, build, vet,
-  test and the no-pgx guard. Loop on it until it prints `verify: all green`,
-  and never report a change as done before that.
+  test, the no-pgx guard, and golangci-lint on new code if it's installed. Loop
+  on it until it prints `verify: all green`, and never report a change as done
+  before that. CI also runs golangci-lint (new issues only) and enforces a
+  total-coverage floor.
+- **Golden corpus (the scanner's eval set): `testdata/corpus/`**, run by
+  `TestCorpus` in `pkg/scanner/corpus_test.go` (offline). Every reported false
+  positive/negative and every new rule adds a case there. After an intended
+  behavior change, regenerate with
+  `go test ./pkg/scanner/ -run TestCorpus -update` and review the golden diff
+  like code. See `testdata/corpus/README.md`.
 - Go: `go build ./...` · `go vet ./...` · `go test ./...`
   - single package/test: `go test ./pkg/scanner/ -run TestFilterFindings -v`
 - CLI: `go run . -p <dir>` · `go run . -g owner/repo -o json` · `-r owasp`

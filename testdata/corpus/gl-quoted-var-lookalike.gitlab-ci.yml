@@ -1,0 +1,22 @@
+# corpus: lookalike
+# models: GitLab predefined variables are environment variables, not
+#   templates -- a double-quoted "$CI_COMMIT_TITLE" is expanded by the shell
+#   as data and cannot inject commands. Also routes the MR title through a
+#   job variable, which is the scanner's own recommended fix.
+# expect-none: cicd-sec-1-gl-mr-target
+# known-gap (false positive): cicd-sec-4-gl-shell-injection fires on
+#   `printf "%s" "$CI_COMMIT_TITLE"` -- a quoted shell variable expansion,
+#   which is data, not code. The rule is a substring match on the script line.
+stages: [notify]
+
+notify:
+  stage: notify
+  image: alpine:3.20
+  timeout: 5m
+  variables:
+    MR_TITLE: $CI_MERGE_REQUEST_TITLE
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - echo "Building MR -- $MR_TITLE"
+    - printf '%s\n' "$CI_COMMIT_TITLE"

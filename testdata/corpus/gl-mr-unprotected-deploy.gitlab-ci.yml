@@ -1,0 +1,36 @@
+# corpus: positive
+# models: GitLab MR pipeline that re-fetches the MR source branch and runs it
+#   with pipeline variables in scope -- deploy credentials defined as plain
+#   (unprotected, unmasked) variables in the YAML are readable by MR code.
+# expect: cicd-sec-1-gl-mr-target
+# expect: cicd-sec-6-gl-hardcoded-secrets
+# expect: cicd-sec-2-gl-pat-secret
+# note: cicd-sec-4-gl-shell-injection also fires on the unquoted
+#   $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME in `git fetch`. Debatable: an env var
+#   expansion is word-split/globbed, not re-parsed as code; the real risk here
+#   is the mr-target finding on the same line.
+stages: [test, deploy]
+
+variables:
+  AWS_ACCESS_KEY_ID: AKIAIOSFODNN7EXAMPLE
+  GITLAB_TOKEN: glpat-xxxxxxxxxxxxxxxxxxxxxx
+  DEPLOY_ENV: staging
+
+test:
+  stage: test
+  image: node:20
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - git fetch origin $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME
+    - git checkout FETCH_HEAD
+    - npm ci
+    - npm test
+
+deploy-review:
+  stage: deploy
+  image: amazon/aws-cli
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - aws s3 sync ./dist s3://review-$CI_MERGE_REQUEST_IID

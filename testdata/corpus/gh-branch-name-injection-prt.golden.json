@@ -1,0 +1,69 @@
+{
+  "case": "gh-branch-name-injection-prt",
+  "scan_as": ".github/workflows/gh-branch-name-injection-prt.yml",
+  "findings": [
+    {
+      "rule_id": "best-prac-2-missing-timeout",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 13,
+      "column": 3
+    },
+    {
+      "rule_id": "cicd-sec-1-checkout-persist-credentials",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 18,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-1-ppe-checkout",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 18,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-3-unpinned-action",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 18,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-1-pr-target-dual-trigger",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 20,
+      "column": 11
+    },
+    {
+      "rule_id": "cicd-sec-4-ppe-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 20,
+      "column": 16
+    },
+    {
+      "rule_id": "cicd-sec-4-ppe-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 21,
+      "column": 23
+    },
+    {
+      "rule_id": "best-prac-5-shell-hardening",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 23,
+      "column": 14
+    },
+    {
+      "rule_id": "cicd-sec-4-ppe-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 23,
+      "column": 14
+    }
+  ]
+}

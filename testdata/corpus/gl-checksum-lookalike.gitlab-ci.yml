@@ -1,0 +1,16 @@
+# corpus: lookalike
+# models: the same download, verified -- fetch to a file, check the published
+#   SHA-256, then run. No pipe into a shell.
+# expect-none: best-prac-1-pipe-to-shell
+# expect-none: cicd-sec-9-download-without-checksum
+stages: [test]
+
+coverage:
+  stage: test
+  image: alpine:3.20
+  timeout: 10m
+  script:
+    - apk add --no-cache curl
+    - curl -fsSLo tool.tar.gz https://example.com/releases/tool-linux-amd64.tar.gz
+    - echo "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08  tool.tar.gz" | sha256sum -c -
+    - tar -xzf tool.tar.gz

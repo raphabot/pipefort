@@ -1,0 +1,20 @@
+{
+  "case": "gl-quoted-var-lookalike",
+  "scan_as": ".gitlab-ci/gl-quoted-var-lookalike.yml",
+  "findings": [
+    {
+      "rule_id": "best-prac-5-shell-hardening",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 19,
+      "column": 5
+    },
+    {
+      "rule_id": "cicd-sec-4-gl-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 22,
+      "column": 7
+    }
+  ]
+}

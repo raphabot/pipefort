@@ -1,0 +1,34 @@
+{
+  "case": "gh-workflow-run-artifact-poisoning",
+  "scan_as": ".github/workflows/gh-workflow-run-artifact-poisoning.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-1-workflow-run-artifact-poisoning",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 24,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-3-unpinned-action",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 24,
+      "column": 15
+    },
+    {
+      "rule_id": "slsa-build-l2-verify-step",
+      "severity": "INFO",
+      "confidence": "HIGH",
+      "line": 24,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-4-ppe-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 27,
+      "column": 19
+    }
+  ]
+}

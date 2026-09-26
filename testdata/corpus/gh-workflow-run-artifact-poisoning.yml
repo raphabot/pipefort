@@ -1,0 +1,29 @@
+# corpus: positive
+# models: workflow_run artifact poisoning -- a privileged follow-up workflow
+#   downloads an artifact produced by an untrusted PR run and executes it.
+# expect: cicd-sec-1-workflow-run-artifact-poisoning
+# known-gap (false positive): cicd-sec-4-ppe-shell-injection fires on the
+#   download-artifact `run-id:` input (${{ github.event.workflow_run.id }},
+#   an integer, passed to an action that does not evaluate it as code).
+name: Post coverage
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+
+permissions:
+  pull-requests: write
+  actions: read
+
+jobs:
+  comment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - run: bash ./coverage/post-comment.sh

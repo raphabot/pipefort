@@ -1,0 +1,69 @@
+{
+  "case": "gl-mr-unprotected-deploy",
+  "scan_as": ".gitlab-ci/gl-mr-unprotected-deploy.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-6-gl-hardcoded-secrets",
+      "severity": "HIGH",
+      "confidence": "MEDIUM",
+      "line": 15,
+      "column": 3
+    },
+    {
+      "rule_id": "cicd-sec-2-cloud-credentials",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 15,
+      "column": 22
+    },
+    {
+      "rule_id": "cicd-sec-2-gl-pat-secret",
+      "severity": "MEDIUM",
+      "confidence": "MEDIUM",
+      "line": 16,
+      "column": 3
+    },
+    {
+      "rule_id": "cicd-sec-6-gl-hardcoded-secrets",
+      "severity": "HIGH",
+      "confidence": "MEDIUM",
+      "line": 16,
+      "column": 3
+    },
+    {
+      "rule_id": "best-prac-2-gl-missing-timeout",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 19,
+      "column": 1
+    },
+    {
+      "rule_id": "best-prac-5-shell-hardening",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 23,
+      "column": 5
+    },
+    {
+      "rule_id": "cicd-sec-1-gl-mr-target",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 25,
+      "column": 7
+    },
+    {
+      "rule_id": "cicd-sec-4-gl-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 25,
+      "column": 7
+    },
+    {
+      "rule_id": "best-prac-2-gl-missing-timeout",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 30,
+      "column": 1
+    }
+  ]
+}

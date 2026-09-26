@@ -1,0 +1,37 @@
+# corpus: positive
+# models: cache poisoning -- a tag-triggered release job restores a dependency
+#   cache that pull-request jobs in the same repo can write, then publishes.
+# known-gap (false negative): cicd-sec-4-cache-poisoning-release does not fire.
+#   workflowPublishes() only recognizes `goreleaser release` in a run: script,
+#   not goreleaser/goreleaser-action with `args: release`, so this publishing
+#   workflow is not treated as one. Golden records the miss; flip this line
+#   back to `# expect:` when the rule learns the action form.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-go@0aaccfd150d50ccaeb58ebd88d36e91967a5f35b # v5.4.0
+        with:
+          go-version: stable
+          cache: true
+      - uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.cache/goreleaser
+          key: goreleaser-${{ runner.os }}
+      - uses: goreleaser/goreleaser-action@9c156ee8a17a598857849441385a2041ef570552 # v6.3.0
+        with:
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
