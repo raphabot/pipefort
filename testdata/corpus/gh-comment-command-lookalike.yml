@@ -1,0 +1,33 @@
+# corpus: lookalike
+# models: an issue_comment "/rebuild" ChatOps command gated on the commenter's
+#   repository association (not on github.actor), that never checks out PR
+#   code and passes the comment through env.
+# expect-none: cicd-sec-1-spoofable-actor-condition
+# expect-none: cicd-sec-4-ppe-shell-injection
+# expect-none: cicd-sec-1-ppe-checkout
+name: ChatOps rebuild
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/rebuild') &&
+      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          COMMENT: ${{ github.event.comment.body }}
+        run: |
+          echo "Requested: $COMMENT"
+          gh workflow run ci.yml -R "$GITHUB_REPOSITORY"

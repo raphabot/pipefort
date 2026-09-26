@@ -1,0 +1,13 @@
+{
+  "case": "gh-self-hosted-public-pr",
+  "scan_as": ".github/workflows/gh-self-hosted-public-pr.yml",
+  "findings": [
+    {
+      "rule_id": "best-prac-3-self-hosted-runners",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 16,
+      "column": 14
+    }
+  ]
+}

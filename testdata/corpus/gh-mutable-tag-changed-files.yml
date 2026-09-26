@@ -1,0 +1,33 @@
+# corpus: positive
+# models: the tj-actions/changed-files compromise shape (March 2025) -- a
+#   popular third-party action referenced by a mutable tag; retagging the
+#   action ran attacker code that dumped runner memory (secrets) to the log.
+# expect: cicd-sec-3-unpinned-action
+name: Lint changed files
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: changed
+        uses: tj-actions/changed-files@v45
+        with:
+          files: "**/*.py"
+      - name: Lint
+        if: steps.changed.outputs.any_changed == 'true'
+        env:
+          CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+          PYPI_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: ruff check $CHANGED

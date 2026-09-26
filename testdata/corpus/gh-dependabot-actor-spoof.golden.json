@@ -1,0 +1,13 @@
+{
+  "case": "gh-dependabot-actor-spoof",
+  "scan_as": ".github/workflows/gh-dependabot-actor-spoof.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-1-spoofable-actor-condition",
+      "severity": "MEDIUM",
+      "confidence": "MEDIUM",
+      "line": 17,
+      "column": 9
+    }
+  ]
+}

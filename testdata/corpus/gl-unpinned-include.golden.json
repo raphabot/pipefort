@@ -1,0 +1,27 @@
+{
+  "case": "gl-unpinned-include",
+  "scan_as": ".gitlab-ci/gl-unpinned-include.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-3-gl-unpinned-include",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 6,
+      "column": 13
+    },
+    {
+      "rule_id": "cicd-sec-3-gl-unpinned-include",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 7,
+      "column": 14
+    },
+    {
+      "rule_id": "cicd-sec-3-gl-unpinned-include",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 10,
+      "column": 10
+    }
+  ]
+}

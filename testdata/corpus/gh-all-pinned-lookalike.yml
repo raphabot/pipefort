@@ -1,0 +1,37 @@
+# corpus: lookalike
+# models: the same lint job, hardened -- every action pinned to a full commit
+#   SHA with a version comment, and no secrets exposed to the lint step.
+# expect-none: cicd-sec-3-unpinned-action
+# expect-none: cicd-sec-5-missing-permissions
+name: Lint changed files
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: changed
+        uses: tj-actions/changed-files@ed68ef82c095e0d48ec87eccea555d944a631a4c # v46.0.5
+        with:
+          files: "**/*.py"
+      - name: Lint
+        if: steps.changed.outputs.any_changed == 'true'
+        env:
+          CHANGED: ${{ steps.changed.outputs.all_changed_files }}
+        run: ruff check $CHANGED

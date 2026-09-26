@@ -1,0 +1,20 @@
+{
+  "case": "fixture-secure",
+  "scan_as": ".github/workflows/fixture-secure.yml",
+  "findings": [
+    {
+      "rule_id": "best-prac-2-missing-timeout",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 16,
+      "column": 3
+    },
+    {
+      "rule_id": "best-prac-5-shell-hardening",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 29,
+      "column": 14
+    }
+  ]
+}

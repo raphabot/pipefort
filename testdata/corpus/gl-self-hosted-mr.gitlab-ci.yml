@@ -1,0 +1,18 @@
+# corpus: positive
+# models: a job pinned to a self-managed (shell-executor) runner via tags that
+#   runs for merge requests, plus debug tracing that dumps every variable.
+# expect: best-prac-3-gl-self-hosted-tags
+# expect: cicd-sec-7-gl-debug-trace
+stages: [test]
+
+variables:
+  CI_DEBUG_TRACE: "true"
+
+integration:
+  stage: test
+  tags: [self-hosted, shell, linux]
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - make integration
+  allow_failure: true

@@ -1,0 +1,35 @@
+# corpus: lookalike
+# models: the safe version -- untrusted fields go through env: and are only
+#   ever expanded by the shell as quoted variables. Numeric/owner-controlled
+#   contexts (issue.number, github.repository) stay inline.
+# known-gap (false positive): cicd-sec-4-ppe-shell-injection fires on the
+#   Label step because ${{ github.event.issue.number }} matches the untrusted-
+#   context regex, although an issue number is an integer and not injectable.
+name: Triage issues
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+
+concurrency:
+  group: triage-${{ github.event.issue.number }}
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Echo title
+        env:
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          echo "New issue: $TITLE"
+          printf '%s' "$BODY" > body.txt
+      - name: Label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh issue edit ${{ github.event.issue.number }} --add-label triage -R ${{ github.repository }}

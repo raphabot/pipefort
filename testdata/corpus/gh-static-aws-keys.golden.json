@@ -1,0 +1,13 @@
+{
+  "case": "gh-static-aws-keys",
+  "scan_as": ".github/workflows/gh-static-aws-keys.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-2-cloud-credentials",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 20,
+      "column": 15
+    }
+  ]
+}

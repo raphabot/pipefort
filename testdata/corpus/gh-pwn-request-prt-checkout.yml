@@ -1,0 +1,29 @@
+# corpus: positive
+# models: the "pwn request" -- pull_request_target checks out the fork's head
+#   and runs its build scripts with a write token and repo secrets in scope.
+# expect: cicd-sec-1-ppe-checkout
+# expect: cicd-sec-5-missing-permissions
+# known-gap (noise): cicd-sec-4-ppe-shell-injection also fires on the
+#   checkout `ref:` input (a with: input to a non-code-evaluating action,
+#   holding a hex SHA). The ppe-checkout finding is the right one here.
+name: PR preview
+
+on:
+  pull_request_target:
+    types: [opened, synchronize]
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci && npm run build
+      - name: Deploy preview
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+        run: npx netlify deploy --dir=dist --alias=pr-${{ github.event.number }}

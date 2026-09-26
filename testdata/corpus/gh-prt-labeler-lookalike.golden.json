@@ -1,0 +1,5 @@
+{
+  "case": "gh-prt-labeler-lookalike",
+  "scan_as": ".github/workflows/gh-prt-labeler-lookalike.yml",
+  "findings": []
+}

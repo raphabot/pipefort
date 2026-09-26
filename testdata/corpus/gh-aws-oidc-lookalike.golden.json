@@ -1,0 +1,5 @@
+{
+  "case": "gh-aws-oidc-lookalike",
+  "scan_as": ".github/workflows/gh-aws-oidc-lookalike.yml",
+  "findings": []
+}

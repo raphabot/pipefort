@@ -1,0 +1,5 @@
+{
+  "case": "gh-cache-poisoning-release",
+  "scan_as": ".github/workflows/gh-cache-poisoning-release.yml",
+  "findings": []
+}

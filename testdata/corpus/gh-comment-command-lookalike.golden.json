@@ -1,0 +1,13 @@
+{
+  "case": "gh-comment-command-lookalike",
+  "scan_as": ".github/workflows/gh-comment-command-lookalike.yml",
+  "findings": [
+    {
+      "rule_id": "best-prac-5-shell-hardening",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 31,
+      "column": 14
+    }
+  ]
+}

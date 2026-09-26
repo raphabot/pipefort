@@ -1,0 +1,62 @@
+{
+  "case": "gh-pwn-request-prt-checkout",
+  "scan_as": ".github/workflows/gh-pwn-request-prt-checkout.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-5-missing-permissions",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 1,
+      "column": 1
+    },
+    {
+      "rule_id": "best-prac-2-missing-timeout",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 16,
+      "column": 3
+    },
+    {
+      "rule_id": "cicd-sec-1-checkout-persist-credentials",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 19,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-1-ppe-checkout",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 19,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-3-unpinned-action",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 19,
+      "column": 15
+    },
+    {
+      "rule_id": "cicd-sec-1-pr-target-dual-trigger",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 21,
+      "column": 11
+    },
+    {
+      "rule_id": "cicd-sec-4-ppe-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 21,
+      "column": 16
+    },
+    {
+      "rule_id": "cicd-sec-3-unpinned-action",
+      "severity": "MEDIUM",
+      "confidence": "HIGH",
+      "line": 22,
+      "column": 15
+    }
+  ]
+}

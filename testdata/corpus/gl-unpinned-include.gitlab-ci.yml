@@ -1,0 +1,20 @@
+# corpus: positive
+# models: supply-chain via includes -- remote templates and cross-project
+#   includes tracked by branch (or no ref at all) can change underneath you.
+# expect: cicd-sec-3-gl-unpinned-include
+include:
+  - remote: https://example.com/ci-templates/build.yml
+  - project: platform/ci-templates
+    file: /templates/deploy.yml
+  - project: platform/ci-templates
+    ref: main
+    file: /templates/lint.yml
+
+stages: [build]
+
+build:
+  stage: build
+  image: golang:1.23
+  timeout: 20m
+  script:
+    - go build ./...

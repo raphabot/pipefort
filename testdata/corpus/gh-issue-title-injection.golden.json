@@ -1,0 +1,27 @@
+{
+  "case": "gh-issue-title-injection",
+  "scan_as": ".github/workflows/gh-issue-title-injection.yml",
+  "findings": [
+    {
+      "rule_id": "best-prac-5-shell-hardening",
+      "severity": "LOW",
+      "confidence": "HIGH",
+      "line": 20,
+      "column": 14
+    },
+    {
+      "rule_id": "cicd-sec-4-ppe-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 20,
+      "column": 14
+    },
+    {
+      "rule_id": "cicd-sec-4-ppe-shell-injection",
+      "severity": "HIGH",
+      "confidence": "HIGH",
+      "line": 26,
+      "column": 14
+    }
+  ]
+}

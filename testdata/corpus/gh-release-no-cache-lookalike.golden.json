@@ -1,0 +1,20 @@
+{
+  "case": "gh-release-no-cache-lookalike",
+  "scan_as": ".github/workflows/gh-release-no-cache-lookalike.yml",
+  "findings": [
+    {
+      "rule_id": "cicd-sec-4-cache-poisoning-release",
+      "severity": "MEDIUM",
+      "confidence": "MEDIUM",
+      "line": 33,
+      "column": 15
+    },
+    {
+      "rule_id": "slsa-build-l2-provenance",
+      "severity": "HIGH",
+      "confidence": "MEDIUM",
+      "line": 40,
+      "column": 14
+    }
+  ]
+}
