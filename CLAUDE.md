@@ -28,6 +28,9 @@ engine**.
 
 ## Commands
 
+- **Verify everything (what CI runs): `scripts/verify.sh`**: gofmt, build, vet,
+  test and the no-pgx guard. Loop on it until it prints `verify: all green`,
+  and never report a change as done before that.
 - Go: `go build ./...` · `go vet ./...` · `go test ./...`
   - single package/test: `go test ./pkg/scanner/ -run TestFilterFindings -v`
 - CLI: `go run . -p <dir>` · `go run . -g owner/repo -o json` · `-r owasp`
@@ -44,7 +47,7 @@ go list -deps . | grep jackc/pgx    # must print nothing
 ## Architecture (the parts that span multiple files)
 
 **One scan engine, one CLI over it.** All detection lives in `pkg/scanner` (the
-catalog in `catalog.go` registers 60+ rules across GitHub Actions + GitLab CI,
+catalog in `catalog.go` is the source of truth for the rule set, spanning GitHub Actions + GitLab CI,
 online supply-chain audits, SLSA, and repo-settings; each `Check*` produces
 `Finding` structs; `FilterFindings` applies the `all`/`owasp`/`slsa` ruleset;
 `fixer.go` rewrites YAML for the fixable categories). Never put scan logic in the
@@ -83,3 +86,28 @@ that reaches a datastore or SaaS concern.
 
 4. **Use the appropriate skills instead of hand-rolling.** `security-review` on
    security-sensitive changes; `code-review` before shipping.
+
+5. **Non-trivial changes leave committed artifacts.** Before coding a rule,
+   fixer, CLI flag, or output/API change, produce
+   `engineering/sdlc/<YYYY-MM-DD>-<slug>/{intent,spec,plan}.md` (skill:
+   `sdlc-artifacts`; a bug fix needs only `plan.md`). They merge with the PR. If
+   you deviate from `plan.md`, update its Deviations section in the same commit.
+   Durable decisions live in `engineering/adr/`. For rules, follow the
+   `add-scanner-rule` skill.
+
+6. **Guardrails are hooks, not suggestions** (`.claude/settings.json`,
+   `.claude/hooks/`). Editing `.env*` is denied. Workflow, `.goreleaser.yaml` and
+   Action edits ask a human, and so do version tags and releases. Pushing to
+   `main` is denied, so open a PR. When fixing failing tests, use the
+   `fix-failing-tests` skill: it blocks edits to existing tests and `testdata/`.
+   If a hook blocks you, follow its reason. Don't route around it.
+
+7. **Review policy is `REVIEW.md`.** Self-review against it before opening a PR.
+
+## Common mistakes (add to this when a review or incident repeats)
+
+- Hardcoding the rule count in docs. It drifts with every rule PR. Point at the
+  catalog or the releases page instead.
+- Shipping a rule without look-alike negative tests. The false positives land
+  on users first.
+- Putting a rule's docs page here. It belongs in the `pipefort-cloud` companion PR.

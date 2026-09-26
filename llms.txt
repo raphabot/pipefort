@@ -12,7 +12,7 @@
 - Repository: https://github.com/raphabot/pipefort (CLI + scan engine, public)
 - Language: Go (module `github.com/raphabot/pipefort`, requires Go 1.25.0+ to build)
 - License: Apache-2.0
-- Latest release: v0.1.7 · pre-1.0, the library API may change on a minor bump
+- Latest release: see https://github.com/raphabot/pipefort/releases/latest · pre-1.0, the library API may change on a minor bump
 - Install (fastest): `curl -fsSL https://pipefort.com/install.sh | sh`
 - First command: `pipefort -p .` — no config, no token, no network required
 
