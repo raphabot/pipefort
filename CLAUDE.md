@@ -111,6 +111,10 @@ that reaches a datastore or SaaS concern.
    If a hook blocks you, follow its reason. Don't route around it.
 
 7. **Review policy is `REVIEW.md`.** Self-review against it before opening a PR.
+   Every ready PR also gets an advisory Claude review against it
+   (`.github/workflows/claude-review.yml`; add the `claude-review` label to
+   re-run it), and `@claude` in a PR comment asks Claude to push a fix. When a
+   review finding recurs, add it to "Common mistakes" below.
 
 ## Common mistakes (add to this when a review or incident repeats)
 
