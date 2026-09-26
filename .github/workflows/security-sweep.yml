@@ -1,0 +1,88 @@
+name: security sweep
+
+# Scheduled Claude security review of everything merged to main in the last 8
+# days, with no human in the path. Findings are validated and rated by confidence:
+#   bounded + high confidence -> draft PR with the fix and a regression test
+#   broader                   -> intent.md in a draft PR (engineering/sdlc/)
+#   nothing                   -> job summary only
+# It runs on the Claude subscription (CLAUDE_CODE_OAUTH_TOKEN; never an API key)
+# and skips when the secret is unset or when nothing merged in the window.
+on:
+  schedule:
+    - cron: "0 9 * * 1" # Mondays 09:00 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: security-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+    steps:
+      - name: Skip without subscription token
+        if: env.CLAUDE_CODE_OAUTH_TOKEN == ''
+        run: echo "::notice::CLAUDE_CODE_OAUTH_TOKEN not set; skipping security sweep."
+
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        with:
+          fetch-depth: 0
+
+      - name: Window
+        id: window
+        if: env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        run: |
+          n=$(git rev-list --count --since=8.days HEAD)
+          echo "commits=$n" >> "$GITHUB_OUTPUT"
+          echo "Commits on main in the last 8 days: $n" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5
+        if: steps.window.outputs.commits != '0' && env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        with:
+          go-version-file: go.mod
+
+      - name: Claude security sweep
+        if: steps.window.outputs.commits != '0' && env.CLAUDE_CODE_OAUTH_TOKEN != ''
+        uses: anthropics/claude-code-action@756cc22e19660d20e8cc9496b4f242475a7f7790  # v1.0.235
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          classify_inline_comments: "false"
+          prompt: |
+            Run a security review of the code merged to main in the last 8 days.
+            Scope: `git log --since=8.days --stat` and `git diff $(git rev-list
+            -1 --before=8.days HEAD)..HEAD`. Read the surrounding code, not just
+            the hunks. Policy: REVIEW.md (Blocker list), CLAUDE.md and
+            engineering/adr/.
+            Focus on: untrusted-YAML handling (unbounded recursion or expansion, panics on malformed input), network calls on the default scan path (ADR 0001), fixers that could corrupt or change the meaning of user workflows, command execution, path traversal in file handling, the published GitHub Action (action.yml, Dockerfile.action), and release or workflow supply chain.
+
+            For every candidate finding:
+            - Validate it by tracing the actual data flow. Drop it if you can't
+              show a concrete path.
+            - Rate confidence as high or medium (drop low), and severity per REVIEW.md.
+            - Check for duplicates in open PRs labeled `security-sweep`
+              (`gh pr list --label security-sweep --state open`).
+
+            Then:
+            - For a high-confidence finding with a small, local fix: on branch
+              `security/sweep-<date>-<slug>`, add the fix and a regression test
+              that fails without it, run `scripts/verify.sh`, and open a DRAFT PR
+              labeled `security-sweep` explaining the flow, impact and fix.
+            - For a broader or medium-confidence finding: write
+              engineering/sdlc/<YYYY-MM-DD>-security-<slug>/intent.md from
+              engineering/sdlc/_templates/intent.md, then open a DRAFT PR
+              labeled `security-sweep` containing only that file.
+            - For no findings: say so in your final message, with what you covered.
+            Never disclose exploit details outside those draft PRs. Never merge,
+            push to main, or touch production.
+          claude_args: |
+            --allowedTools "Read,Grep,Glob,Write,Edit,Bash(git log:*),Bash(git show:*),Bash(git diff:*),Bash(git rev-list:*),Bash(git status:*),Bash(git switch:*),Bash(git checkout -b:*),Bash(git add:*),Bash(git commit:*),Bash(git push -u origin security/*),Bash(gh pr list:*),Bash(gh pr create:*),Bash(gh label create:*),Bash(scripts/verify.sh*),Bash(go test:*),Bash(go vet:*),Bash(gofmt:*)"
